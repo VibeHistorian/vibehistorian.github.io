@@ -1,0 +1,175 @@
+<div class="part-controls" [section]="local()" [vcParameterShortcut]="!preferences.editingQuickSettings()" (parameterShortcut)="parameterShortcut($event)">
+  @if (seedControl(); as control) {
+    <div class="part-control seed-control" [class.custom]="inheritanceFor(control) === 'custom'" [class.partially-frozen]="categoryFreezeState([control]) === 'partial'" [class.parameter-locked]="!local() && lockState(control) !== false" [class.variation-only]="variationOnly(control)" data-control-key="patternSeed" data-parameter-key="patternSeed" [title]="control.description ?? ''">
+      <span class="quick-title-sizing" aria-hidden="true">{{ control.label }}</span>
+      <fieldset class="quick-control-border quick-inheritance-border" aria-hidden="true">
+        <legend>{{ control.label }}</legend>
+      </fieldset>
+      @if (preferences.editingQuickSettings()) {
+        <button type="button" class="placement-target" (click)="preferences.moveControl(role(), control.key)"
+          [attr.aria-label]="'Move ' + control.label + (inspectorOnly() ? ' to quick settings' : ' to inspector')"></button>
+      }
+      <div class="control-content" [inert]="preferences.editingQuickSettings()">
+      <vc-control-heading #seedHeading [label]="control.label" [inheritance]="'global'"
+        (inheritRequested)="inheritRequested.emit(control.key)" />
+      <input [id]="seedHeading.controlId" class="part-list" type="text" [value]="textValue(control)"
+        [attr.aria-label]="control.label" [placeholder]="values()[control.key] === null ? 'Mixed' : ''"
+        (mousedown)="seedMouseDown($event)" (contextmenu)="seedMouseAction($event)" (auxclick)="seedMouseAction($event)"
+        title="Right-click to reset to 0; middle-click to randomize"
+        (focus)="startTextEdit()" (change)="commitText(control, $event)"
+        (keydown.enter)="$any($event.target).blur()" (keydown.escape)="cancelTextEdit(control, $event)" />
+      <button type="button" class="common-grid-button"
+        (click)="copyGlobalSeed()">Copy global</button>
+      </div>
+      <ng-container [ngTemplateOutlet]="quickInheritance" [ngTemplateOutletContext]="{ $implicit: control }" />
+    </div>
+  }
+  @for (group of controlGroups(); track group.id) {
+    <fieldset class="part-control-area" [class.fully-frozen]="categoryFreezeState(group.controls) === 'all'" [class.partially-frozen]="categoryFreezeState(group.controls) === 'partial'" [attr.data-control-category]="group.id" [attr.aria-label]="group.label + ' parameters'">
+      @if (showGroupTitles()) { <legend>{{ group.label }}</legend> }
+      <div class="part-area-controls">
+        @for (control of group.controls; track control.key) {
+          <div class="part-control" [class.custom]="inheritanceFor(control) === 'custom'" [class.partially-frozen]="categoryFreezeState([control]) === 'partial'" [class.parameter-locked]="!local() && lockState(control) !== false" [class.variation-only]="variationOnly(control)" [attr.data-control-key]="control.key" [attr.data-parameter-key]="control.key" data-parameter-combined="true" [attr.data-control-category]="group.id" [class.compact-control]="control.kind === 'number' || control.kind === 'boolean'" [class.knob-control]="control.kind === 'number'" [class.rhythm-control]="control.key === 'rhythm'" [class.joined-control]="members(control).length > 0" [class.melody-choices]="control.key === 'ending'" [class.pattern-control]="control.kind === 'pattern' || control.kind === 'velocities'" [title]="control.label + (control.description ? ': ' + control.description : '')">
+            @if (control.kind !== 'boolean') {
+              <span class="quick-title-sizing" aria-hidden="true">{{ title(control) }}</span>
+            }
+            <fieldset class="quick-control-border quick-inheritance-border" [class.with-heading]="control.kind !== 'boolean'" aria-hidden="true">
+              @if (control.kind !== 'boolean') {
+                <legend>{{ title(control) }}</legend>
+              }
+            </fieldset>
+            @if (preferences.editingQuickSettings()) {
+              <button type="button" class="placement-target" (click)="preferences.moveControl(role(), control.key)"
+                [attr.aria-label]="'Move ' + control.label + (inspectorOnly() ? ' to quick settings' : ' to inspector')"
+                [title]="'Move ' + control.label + (inspectorOnly() ? ' to quick settings' : ' to inspector')"></button>
+            }
+            <div class="control-content" [inert]="preferences.editingQuickSettings()">
+            @if (control.key === 'ending') {
+              <vc-control-heading label="SENTENCE" [inheritance]="'global'" (inheritRequested)="resetControl(control)" />
+              @for (member of members(control); track member.key) {
+                <vc-select #choice="vcSelect" [class.custom-member]="parameterFrozen(member.key)" [options]="member.options" [attr.data-control-key]="member.key" [attr.data-parameter-key]="member.key" [attr.aria-label]="'Melody ' + member.label" [title]="member.label" [selectDefault]="choiceDefault(member)" [value]="values()[member.key] ?? ''" (valueChange)="choose(member, $event, choice)" [mixed]="values()[member.key] === null"></vc-select>
+              }
+            } @else if (control.key === 'feedbackCount' || control.key === 'velocityMin' || control.key === 'rangeMin') {
+              <vc-control-heading [label]="title(control)" [inheritance]="'global'" (inheritRequested)="resetControl(control)" />
+              <div class="joined-members">
+                @for (member of members(control); track member.key) {
+                  <ng-container [ngTemplateOutlet]="compactMember" [ngTemplateOutletContext]="{ $implicit: member }" />
+                }
+              </div>
+            } @else if (control.kind === 'number') {
+              <vc-compact-knob [attr.data-parameter-key]="control.key" [defaultValue]="numericDefault(control)" [value]="numericValue(control)" [mixed]="values()[control.key] === null"
+                [minimum]="minimum(control)" [maximum]="maximum(control)"
+                [step]="control.step ?? 1"
+                [allowedValues]="control.allowedValues ?? emptyAllowedValues"
+                [label]="control.label" [shortLabel]="code(control)" [compact]="true" [description]="control.description ?? ''" [unit]="control.unit ?? ''"
+                [showValueBelow]="control.showValueBelow ?? false" [inheritance]="'global'"
+                (inheritRequested)="inheritRequested.emit(control.key)"
+                (valueCommit)="settingsChanged.emit({ key: control.key, value: $event })" />
+            } @else if (control.kind === 'boolean') {
+              <vc-compact-toggle [attr.data-parameter-key]="control.key" [label]="control.label" [shortLabel]="code(control)"
+                [description]="control.description ?? ''" [active]="values()[control.key] === true" [mixed]="values()[control.key] === null"
+                [showStatus]="true" [inheritance]="'global'"
+                (inheritRequested)="inheritRequested.emit(control.key)"
+                (toggled)="settingsChanged.emit({ key: control.key, value: values()[control.key] !== true })" />
+            } @else {
+              <vc-control-heading #heading [label]="title(control)" [inheritance]="'global'"
+                (inheritRequested)="resetControl(control)" />
+              @if (control.kind === 'integers' || control.kind === 'integer') {
+                <input [attr.data-parameter-key]="control.key" [id]="heading.controlId" class="part-list" type="text" [value]="textValue(control)"
+                  [attr.aria-label]="control.label" [placeholder]="values()[control.key] === null ? 'Mixed' : ''"
+                  (focus)="startTextEdit()" (change)="commitText(control, $event)"
+                  (keydown.enter)="$any($event.target).blur()" (keydown.escape)="cancelTextEdit(control, $event)" />
+              } @else if (control.kind === 'choice') {
+                <div class="choice-controls">
+                @if (control.key === 'strumType') {
+                  <vc-menu-select [groups]="strumGroups" [options]="strumOptions" [displayLabel]="values()[control.key] === null ? undefined : strumDisplayLabels['' + values()[control.key]]" [attr.data-parameter-key]="control.key" [class.custom-member]="parameterFrozen(control.key)" [selectDefault]="choiceDefault(control)" [id]="heading.controlId" [attr.aria-label]="control.label" [value]="values()[control.key] ?? ''" [mixed]="values()[control.key] === null" (valueChange)="choose(control, $event)" />
+                } @else if (control.key === 'rhythm' || control.key === 'chordSpanFill') {
+                  <vc-menu-select #choice="vcMenuSelect" [groups]="control.key === 'rhythm' ? rhythmGroups : fillGroups" [options]="control.key === 'rhythm' ? control.options : fillOptions" [attr.data-parameter-key]="control.key" [class.custom-member]="parameterFrozen(control.key)" [selectDefault]="choiceDefault(control)" [id]="heading.controlId" [attr.aria-label]="control.label" [value]="values()[control.key] ?? ''" (valueChange)="choose(control, $event, choice)" [mixed]="values()[control.key] === null" />
+                } @else {
+                  <vc-select #choice="vcSelect" [attr.data-parameter-key]="control.key" [class.custom-member]="parameterFrozen(control.key)" [options]="control.options" [selectDefault]="choiceDefault(control)" [id]="heading.controlId" [attr.aria-label]="control.label" [value]="values()[control.key] ?? ''" (valueChange)="choose(control, $event, choice)" [mixed]="values()[control.key] === null"></vc-select>
+                }
+                @if (flipControl(control); as flip) {
+                  <button type="button" class="flip-button" [class.custom-member]="parameterFrozen(flip.key)" [attr.data-control-key]="flip.key" [attr.data-parameter-key]="flip.key"
+                    [class.active]="values()[flip.key] === true" [class.mixed]="values()[flip.key] === null"
+                    [attr.aria-label]="flip.label" [attr.aria-pressed]="values()[flip.key] === null ? 'mixed' : values()[flip.key] === true"
+                    [title]="flip.label + ': ' + flip.description"
+                    (click)="toggleFlip(flip)"><span aria-hidden="true">↔</span></button>
+                }
+                </div>
+                @if (control.key === 'pattern' && role() === 'arpeggio') {
+                  <button type="button" class="mini-preview arp-preview" aria-label="Edit arpeggio pattern" aria-haspopup="dialog" title="View or edit the generated direction" (click)="openArpeggioPattern()">
+                    @if (arpeggioPreview()) {
+                      <svg viewBox="0 0 100 100" preserveAspectRatio="none" aria-hidden="true"><polyline [attr.points]="arpeggioPoints()" /></svg>
+                    } @else { <span class="mixed">Mixed</span> }
+                  </button>
+                }
+                @if (control.key === 'rhythm' && usesDurations()) {
+                  <button type="button" class="mini-preview duration-preview" [class.custom-member]="parameterFrozen('customDurations') || parameterFrozen('customDurationChances') || parameterFrozen('customDurationRandomWeighting')" [attr.aria-label]="'Edit custom ' + role() + ' durations'" aria-haspopup="dialog"
+                    title="First active lane. Edit note lengths and pauses." (click)="openSequencer()">
+                    @if (durationPreview(); as slots) {
+                      @for (slot of slots; track $index) {
+                        <span [class.active]="!slot.rest" [style.left.%]="slot.start / 4 * 100" [style.width.%]="slot.duration / 4 * 100" aria-hidden="true"></span>
+                      }
+                    } @else { <span class="mixed">Mixed</span> }
+                  </button>
+                }
+                @if (control.key === 'rhythm' && (rhythmPreview() !== undefined || role() === 'drums')) {
+                  <button type="button" class="mini-preview rhythm-preview-grid" [class.custom-member]="parameterFrozen('customPattern')" [style.--preview-steps]="rhythmPreview()?.length ?? 8" aria-label="Edit rhythm pattern" aria-haspopup="dialog" [title]="rhythmPreviewLabel()" (click)="openSequencer()">
+                    @if (rhythmPreview(); as pattern) {
+                      @for (slot of pattern; track $index) { <span class="rhythm-preview-slot" [style.--step-index]="$index" [class.active]="slot > 0" aria-hidden="true"></span> }
+                    } @else { <span class="mixed">Mixed</span> }
+                  </button>
+                }
+              } @else if (control.kind === 'velocities') {
+                <button type="button" class="mini-preview velocity-preview" aria-label="Edit pattern velocities" aria-haspopup="dialog" (click)="openSequencer(true)">
+                  @if (velocitySlots(); as slots) {
+                    @for (velocity of slots; track $index) { <span [style.height.%]="8 + velocity / 127 * 92" aria-hidden="true"></span> }
+                  } @else { <span class="mixed">Mixed</span> }
+                </button>
+              }
+            }
+            @if (control.key === 'rhythm' && members(control).length > 0) {
+              <div class="joined-members rhythm-members">
+                @for (member of members(control); track member.key) {
+                  <ng-container [ngTemplateOutlet]="compactMember" [ngTemplateOutletContext]="{ $implicit: member }" />
+                }
+              </div>
+            }
+            </div>
+            <ng-container [ngTemplateOutlet]="quickInheritance" [ngTemplateOutletContext]="{ $implicit: control }" />
+          </div>
+        }
+
+      </div>
+    </fieldset>
+  }
+</div>
+
+<ng-template #quickInheritance let-control>
+  @if (!local()) {
+    <button type="button" class="parameter-lock" [class.locked]="lockState(control) === true"
+      [attr.aria-pressed]="lockState(control)"
+      [attr.aria-label]="'Lock ' + control.label + ' during reroll and Compose'"
+      title="Preserve this parameter during reroll and Compose. Manual edits still apply."
+      [disabled]="preferences.editingQuickSettings()" (click)="toggleLock(control)">🔒︎</button>
+  }
+  @if (inheritanceFor(control) !== 'global') {
+    <vc-control-heading class="quick-inheritance" [label]="title(control)" [statusOnly]="true"
+      [inheritance]="inheritanceFor(control)" [inert]="preferences.editingQuickSettings()"
+      (inheritRequested)="resetControl(control)" />
+  }
+</ng-template>
+
+<ng-template #compactMember let-member>
+  <div class="joined-member" [class.custom-member]="parameterFrozen(member.key)" [attr.data-control-key]="member.key" [attr.data-parameter-key]="member.key">
+    @if (member.key === 'feedbackCount' || member.key === 'patternShift') {
+      <vc-select [options]="member.key === 'feedbackCount' ? delayOptions : shiftOptions" [attr.aria-label]="member.label" [title]="member.label" [selectDefault]="numericDefault(member)" [value]="values()[member.key] ?? ''" (valueChange)="chooseNumber(member, $event)" [mixed]="values()[member.key] === null"></vc-select>
+    } @else {
+      <vc-compact-knob [defaultValue]="numericDefault(member)" [value]="numericValue(member)" [mixed]="values()[member.key] === null"
+        [minimum]="minimum(member)" [maximum]="maximum(member)" [step]="member.step ?? 1" [label]="member.label"
+        [mini]="member.key !== 'feedbackDuration'" [compact]="true" [hoverLabelOnly]="true" [showLabel]="false"
+        [description]="member.description ?? ''" [unit]="member.unit ?? ''"
+        (valueCommit)="settingsChanged.emit({ key: member.key, value: $event })" />
+    }
+  </div>
+</ng-template>

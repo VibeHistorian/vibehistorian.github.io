@@ -1,0 +1,366 @@
+<section class="settings-dialog" cdkDrag cdkDragBoundary="body" [class.explainers-as-tooltips]="preferences.preferences().settingsExplainersAsTooltips">
+  <header class="settings-heading" cdkDragHandle>
+    <h1 id="settings-title" class="brand" aria-label="VibeComposer settings">
+      <span class="brand-mark" aria-hidden="true">V</span>
+      <span>vibe<span class="brand-light">composer</span></span>
+      <span class="brand-version">[v{{ appVersion }} | p{{ projects.project().schemaVersion }}]</span>
+    </h1>
+    <button type="button" class="appearance-toggle" [attr.aria-pressed]="preview()" title="Show the surrounding workspace without dimming" (click)="preview.set(!preview())">Preview</button>
+    <button type="button" class="close-button" (click)="dialog.close()" aria-label="Close settings">×</button>
+  </header>
+  <div class="settings-body">
+    <nav class="settings-sidebar" aria-label="Settings categories">
+      @for (category of categories; track category.id) {
+        @if (category.children.length) {
+          <section class="settings-category-group" [attr.aria-labelledby]="category.id + '-group-title'">
+            <h2 class="settings-category-heading" [id]="category.id + '-group-title'"><span aria-hidden="true">▾</span> {{ category.label }}</h2>
+            <div class="settings-subcategories">
+              @for (child of category.children; track child.id) {
+                <button type="button" [class.selected]="selectedCategory() === child.id"
+                  [attr.aria-label]="category.label + ' ' + child.label"
+                  [attr.aria-current]="selectedCategory() === child.id ? 'page' : null"
+                  (click)="selectedCategory.set(child.id)"><span>{{ child.label }}</span><span class="category-scopes">@for (scope of categoryScopes[child.id]; track scope) { <vc-settings-scope-indicator [scope]="scope" /> }</span></button>
+              }
+            </div>
+          </section>
+        } @else {
+          <button type="button" class="settings-main-category" [class.selected]="selectedCategory() === category.id"
+            [attr.aria-current]="selectedCategory() === category.id ? 'page' : null"
+            (click)="selectedCategory.set(category.id)"><span>{{ category.label }}</span><span class="category-scopes">@for (scope of categoryScopes[category.id]; track scope) { <vc-settings-scope-indicator [scope]="scope" /> }</span></button>
+        }
+      }
+    </nav>
+    <div class="settings-content">
+      @if (shortcutPage(); as page) {
+          <section aria-labelledby="shortcuts-title">
+            <div class="appearance-heading"><h2 id="shortcuts-title">Shortcuts: {{ page.label }}</h2>
+              <button type="button" class="appearance-reset" (click)="resetShortcuts()">Reset to app defaults</button>
+            </div>
+            <p class="shortcut-intro">UI preferences only. Choose Record, then use your desired key, mouse button or wheel with Ctrl, Shift or Alt. Ctrl also accepts Cmd. Muted mouse buttons are fixed; record only their modifiers. For modifier actions, hold and release the desired modifiers. Recording replaces all alternatives for that action.</p>
+            <div class="shortcut-status"><p role="status" aria-live="polite">{{ shortcutMessage() }}</p>
+            @if (recording()) { <button type="button" class="appearance-reset" data-cancel-recording (keydown.escape)="cancelRecording()" (click)="cancelRecording()">Cancel recording (Escape)</button> }</div>
+            @for (section of page.sections; track section.label) {
+              <section class="variation-settings-group" [attr.aria-label]="section.label">
+                <h3>{{ section.label }}</h3>
+                @for (action of section.actions; track action.id) {
+                <div class="setting-row shortcut-row">
+                  <div class="setting-copy"><h3>{{ action.label }}</h3><p>{{ action.description }}</p></div>
+                  <div class="setting-controls shortcut-controls">
+                    <span>{{ shortcutText(action.id) }}@if (fixedMouseButton(action.id) !== undefined) { <span class="shortcut-fixed"> + {{ fixedMouseText(action.id) }}</span> }</span>
+                    <button type="button" class="appearance-toggle" [attr.aria-label]="'Record ' + action.label" [attr.aria-pressed]="recording() === action.id" (click)="recordShortcut(action.id)">{{ recording() === action.id ? 'Listening…' : 'Record' }}</button>
+                    <button type="button" class="appearance-reset" [attr.aria-label]="'Clear ' + action.label" (click)="preferences.setShortcut(action.id, null)">Clear</button>
+                  </div>
+                </div>
+                }
+              </section>
+            }
+          </section>
+      } @else {
+      @switch (selectedCategory()) {
+        @case ('appearance') {
+          <section aria-labelledby="appearance-title">
+            <div class="appearance-heading"><h2 id="appearance-title">Appearance</h2>
+
+            </div>
+            <div class="setting-row">
+              <div class="setting-copy"><h3>Panel layout</h3><p id="panel-layout-description">Spacious uses rounded panels with gaps. Compact uses square panels with minimal gaps.</p></div>
+              <div class="setting-controls"><vc-select aria-label="Panel layout" aria-describedby="panel-layout-description"
+                [options]="panelLayoutOptions" [value]="preferences.appearance().panelLayout"
+                (valueChange)="preferences.setPanelLayout($event)" /></div>
+            </div>
+            <div class="setting-row">
+              <div class="setting-copy"><h3>Window width limit</h3><p id="window-width-description">Use the available window width up to this limit. The middle panels fill the space between the track panel and inspector.</p></div>
+              <div class="setting-controls"><vc-select aria-label="Window width limit" aria-describedby="window-width-description"
+                [options]="windowWidthOptions" [value]="preferences.appearance().windowWidthLimit"
+                (valueChange)="preferences.setWindowWidthLimit($event)" /></div>
+            </div>
+            <div class="setting-row">
+              <div class="setting-copy"><h3>Settings explainers as tooltips</h3><p>Show explanations on hover or keyboard focus instead of below each setting.</p></div>
+              <div class="setting-controls"><input type="checkbox" aria-label="Settings explainers as tooltips" [checked]="preferences.preferences().settingsExplainersAsTooltips" (change)="preferences.toggleSettingsExplainers()" /></div>
+            </div>
+            <div class="setting-row">
+              <div class="setting-copy"><h3>Random theme</h3><p>Random theme with five distinct track colors. Keeps your fonts and optionally resets color adjustments.</p></div>
+              <div class="setting-controls"><div class="appearance-actions"><button type="button" class="appearance-reset" (click)="preferences.randomizeAppearance('dark')">Random dark mode</button><button type="button" class="appearance-reset" (click)="preferences.randomizeAppearance('light')">Random light mode</button></div><label class="preserve-color-adjustments"><input type="checkbox" [checked]="preferences.appearance().resetAdjustments" (change)="preferences.toggleResetAdjustments()" />Reset adjustments</label></div>
+            </div>
+            <div class="setting-row">
+              <div class="setting-copy"><h3>Color adjustments</h3><p>Adjust brightness, hue and saturation. Enable All to include track role colors in the hue shift.</p></div>
+              <div class="setting-controls"><div class="color-adjustments">@for (adjustment of colorAdjustments; track adjustment.key) {
+                <div class="color-adjustment"><vc-compact-knob [label]="adjustment.label" [description]="adjustment.description" [value]="preferences.appearance().colorAdjustments[adjustment.key]" [minimum]="-50" [maximum]="50" [defaultValue]="0" [dense]="true" [showValueBelow]="true" (valueCommit)="preferences.setColorAdjustment(adjustment.key, $event)" />
+                  @if (adjustment.key === 'hueShift') { <button type="button" class="appearance-toggle" [attr.aria-pressed]="preferences.appearance().hueShiftRoles" title="Include all five track role colors in hue shift" (click)="preferences.toggleHueShiftRoles()">All</button> }
+                </div>
+              }</div><button type="button" class="appearance-reset" (click)="preferences.applyAdjustmentsToBaseColors()">Apply to Base Colors</button></div>
+            </div>
+            <h3 class="settings-section-heading">Main theme colors</h3>
+            @for (color of themeColors; track color.key) {
+            <div class="setting-row">
+              <div class="setting-copy"><h3>{{ color.label }}</h3></div>
+              <div class="setting-controls"><input type="color" [attr.aria-label]="color.label + ' theme color'"
+                    [value]="preferences.appearance().themeColors[color.key]" (input)="changeThemeColor(color.key, $event)" /></div>
+            </div>
+            }
+            <h3 class="settings-section-heading">Fonts</h3>
+            @for (area of fontAreas; track area.key) {
+            <div class="setting-row">
+              <div class="setting-copy"><h3>{{ area.label }}</h3></div>
+              <div class="setting-controls"><vc-select [options]="fontChoices" [attr.aria-label]="area.label + ' font'"
+                    (valueChange)="changeFont(area.key, $event)" [value]="preferences.appearance().fonts[area.key]"></vc-select></div>
+            </div>
+            }
+            <h3 class="settings-section-heading">Track role colors</h3>
+            @for (role of roles; track role) {
+            <div class="setting-row">
+              <div class="setting-copy"><h3>{{ roleNames[role] }}</h3></div>
+              <div class="setting-controls"><input type="color" [attr.aria-label]="roleNames[role] + ' color'"
+                    [value]="preferences.appearance().roleColors[role]" (input)="changeRoleColor(role, $event)" /></div>
+            </div>
+            }
+            <div class="setting-row">
+              <div class="setting-copy"><h3>Progressive Track Coloring</h3><p>Blend successive tracks toward the next role color in the score and arrangement.</p></div>
+              <div class="setting-controls"><input type="checkbox" aria-label="Progressive Track Coloring" [checked]="preferences.appearance().progressiveTrackColoring"
+                (change)="preferences.toggleProgressiveTrackColoring()" /></div>
+            </div>
+            <div class="setting-row">
+              <div class="setting-copy"><h3>Reset appearance</h3><p>Restore the default theme, fonts and track role colors.</p></div>
+              <div class="setting-controls"><button type="button" class="appearance-reset" (click)="preferences.resetAppearance()">Reset appearance to defaults</button></div>
+            </div>
+          </section>
+        }
+        @case ('behavior') {
+          <section aria-labelledby="behavior-title">
+            <h2 id="behavior-title">Behavior</h2>
+            <div class="setting-row"><div class="setting-copy"><h3><vc-settings-scope-indicator scope="sound" />Global humanization</h3><p>Maximum ± beat offsets, after part timing and swing. Includes manual notes. Pickups and tails may cross section edges; ownership stays with the source section. Zero disables.</p></div><div class="setting-controls">
+              <label>Timing beats<input aria-label="Global timing humanization" type="number" min="0" max="0.25" step="0.005" [value]="projects.project().humanization?.timingBeats ?? 0" (change)="setHumanization('timingBeats', +$any($event.target).value)" /></label>
+              <label>Duration beats<input aria-label="Global duration humanization" type="number" min="0" max="0.25" step="0.005" [value]="projects.project().humanization?.durationBeats ?? 0" (change)="setHumanization('durationBeats', +$any($event.target).value)" /></label>
+            </div></div>
+            <div class="setting-row"><div class="setting-copy"><h3><vc-settings-scope-indicator scope="compose" />Compose BPM bounds</h3><p>Inclusive range when tempo randomization is enabled. UI preference; current tempo stays unchanged.</p></div><div class="setting-controls">
+              <label>Minimum<input aria-label="Compose minimum BPM" type="number" min="30" max="240" [value]="preferences.preferences().composeBpmMin" (change)="preferences.setComposeBpmBound('composeBpmMin', +$any($event.target).value)" /></label>
+              <label>Maximum<input aria-label="Compose maximum BPM" type="number" min="30" max="240" [value]="preferences.preferences().composeBpmMax" (change)="preferences.setComposeBpmBound('composeBpmMax', +$any($event.target).value)" /></label>
+            </div></div>
+            <div class="setting-row">
+              <div class="setting-copy"><h3><vc-settings-scope-indicator scope="ui" />Limit instrument options to selected pool</h3><p id="instrument-pool-description">Show only instruments in each role's selected pool, plus each track's current instrument. Turn off to show all instruments. The automatic Chords pool includes both Chord and Pluck instruments. Saved in your UI preferences.</p></div>
+              <div class="setting-controls"><button type="button" aria-label="Limit instrument options to selected pool" class="appearance-toggle" [attr.aria-pressed]="preferences.limitInstrumentsToPool()"
+              aria-describedby="instrument-pool-description" (click)="preferences.toggleLimitInstrumentsToPool()">{{ preferences.limitInstrumentsToPool() ? 'On' : 'Off' }}</button></div>
+            </div>
+            <div class="setting-row">
+              <div class="setting-copy"><h3><vc-settings-scope-indicator scope="compose" />Restart playback on Compose</h3><p id="restart-compose-description">Return to the beginning when composing, or to the loop start when looping. Playback continues if already playing.</p></div>
+              <div class="setting-controls"><button type="button" aria-label="Restart playback on Compose" class="appearance-toggle" [attr.aria-pressed]="preferences.restartPlaybackOnCompose()"
+              aria-describedby="restart-compose-description" (click)="preferences.toggleRestartPlaybackOnCompose()">{{ preferences.restartPlaybackOnCompose() ? 'On' : 'Off' }}</button></div>
+            </div>
+          </section>
+        }
+        @case ('variations') {
+          <section aria-labelledby="variation-settings-title">
+            <h2 id="variation-settings-title">Variations</h2>
+            <p>These preferences apply to future randomized variations. Existing choices stay unchanged. Manual selection can use any compatible variation.</p>
+            @for (group of variationGroups; track group.id) {
+              <section class="variation-settings-group" [attr.aria-labelledby]="'variation-group-' + group.id">
+                <h3 [id]="'variation-group-' + group.id">{{ group.label }}</h3>
+                @for (row of group.rows; track row.kind) {
+                  <div class="variation-preference-row">
+                    <label class="variation-enable"><input type="checkbox" [attr.aria-label]="'Reroll ' + row.label"
+                      [checked]="preferences.variationRerolls().allowedKinds.includes(row.kind)" (change)="preferences.setVariationRerollEnabled(row.kind, $any($event.target).checked)" /> {{ row.label }}</label>
+                    <div class="variation-defaults">
+                      @for (strength of row.strengths; track strength.falling) {
+                        <label class="variation-default"><span>{{ strength.label }}</span>
+                          <input type="range" min="1" [max]="strength.max" step="1" [attr.aria-label]="strength.ariaLabel"
+                            [value]="row.kind === 'melody-speed' ? preferences.variationRerolls().melodySpeedDelta : strength.falling ? preferences.variationRerolls().velocityFallDelta : preferences.variationRerolls().strengths[row.kind]"
+                            (input)="preferences.setVariationStrength(row.kind, +$any($event.target).value, strength.falling)" />
+                          <output>{{ row.kind === 'melody-speed' ? preferences.variationRerolls().melodySpeedDelta : strength.falling ? preferences.variationRerolls().velocityFallDelta : preferences.variationRerolls().strengths[row.kind] }}</output>
+                        </label>
+                      }
+                    </div>
+                  </div>
+                }
+              </section>
+            }
+          </section>
+        }
+        @case ('arrangement') {
+          <section aria-labelledby="arrangement-settings-title">
+            <h2 id="arrangement-settings-title">Arrangement</h2>
+            <div class="setting-row">
+              <div class="setting-copy"><h3><vc-settings-scope-indicator scope="compose" />Generate variations with arrangements</h3><p id="arrangement-variations-description">Generate variations for new arrangements, inserted sections and Manual arrangement Compose. Turning this off keeps existing choices. Saved immediately in your UI preferences.</p></div>
+              <div class="setting-controls"><input type="checkbox" aria-label="Generate arrangement variations" aria-describedby="arrangement-variations-description"
+                [checked]="preferences.generateArrangementVariations()" (change)="preferences.setArrangementBehavior('generateArrangementVariations', $any($event.target).checked)" /></div>
+            </div>
+            <div class="setting-row">
+              <div class="setting-copy"><h3><vc-settings-scope-indicator scope="compose" />Reroll presence too</h3><p id="variation-presence-description">Include track presence when rerolling whole-arrangement variations. Review both changes in the variations popup before Apply; section order stays fixed. Saved immediately in your UI preferences.</p></div>
+              <div class="setting-controls"><input type="checkbox" aria-label="Reroll presence too" aria-describedby="variation-presence-description"
+                [checked]="preferences.rerollPresenceWithVariations()" (change)="preferences.setArrangementBehavior('rerollPresenceWithVariations', $any($event.target).checked)" /></div>
+            </div>
+          </section>
+        }
+        @case ('arrangement-appearance') {
+          <section aria-labelledby="arrangement-appearance-title">
+            <h2 id="arrangement-appearance-title">Arrangement</h2>
+            <div class="setting-row">
+              <div class="setting-copy"><h3>Cell Brightness</h3><p>Adjust arrangement cell backgrounds relative to the default brightness. Saved in your UI preferences.</p></div>
+              <div class="setting-controls"><vc-compact-knob label="Cell Brightness" [value]="preferences.appearance().arrangementCellBrightness" [minimum]="-50" [maximum]="50" [defaultValue]="0" unit="%" [dense]="true" [showValueBelow]="true" (valueCommit)="preferences.setArrangementBrightness('arrangementCellBrightness', $event)" /></div>
+            </div>
+            <div class="setting-row">
+              <div class="setting-copy"><h3>Note Brightness</h3><p>Adjust arrangement note previews relative to the default brightness. Saved in your UI preferences.</p></div>
+              <div class="setting-controls"><vc-compact-knob label="Note Brightness" [value]="preferences.appearance().arrangementNoteBrightness" [minimum]="-50" [maximum]="50" [defaultValue]="0" unit="%" [dense]="true" [showValueBelow]="true" (valueCommit)="preferences.setArrangementBrightness('arrangementNoteBrightness', $event)" /></div>
+            </div>
+          </section>
+        }
+        @case ('score') {
+          <section aria-labelledby="score-settings-title">
+            <h2 id="score-settings-title">Score</h2>
+            <div class="setting-row">
+              <div class="setting-copy"><h3>Note shape</h3><p id="score-note-shape-description">Instrument-based uses triangles for plucky sounds and classic shapes for sustained sounds. Log uses a thin concave taper for plucky sounds and a thick convex taper for sustained sounds. Does not apply to the phrase editor.</p></div>
+              <div class="setting-controls"><vc-select aria-label="Note shape" [options]="scoreNoteShapes" [value]="preferences.scoreNoteShape()"
+                (valueChange)="preferences.setScoreNoteShape($event)" aria-describedby="score-note-shape-description" /></div>
+            </div>
+            <div class="setting-row">
+              <div class="setting-copy"><h3>Piano roll / grid row brightness</h3><p>Adjust the brightness of pitch and drum row shading. Saved in your UI preferences.</p></div>
+              <div class="setting-controls"><vc-compact-knob label="Piano roll / grid row brightness" [value]="preferences.appearance().scoreRowBrightness" [minimum]="-50" [maximum]="50" [defaultValue]="0" unit="%" [dense]="true" [showValueBelow]="true" (valueCommit)="preferences.setScoreBrightness('scoreRowBrightness', $event)" /></div>
+            </div>
+            <div class="setting-row">
+              <div class="setting-copy"><h3>Grid subdivision brightness</h3><p>Adjust the brightness of pitch and time subdivision lines. Saved in your UI preferences.</p></div>
+              <div class="setting-controls"><vc-compact-knob label="Grid subdivision brightness" [value]="preferences.appearance().scoreGridBrightness" [minimum]="-50" [maximum]="50" [defaultValue]="0" unit="%" [dense]="true" [showValueBelow]="true" (valueCommit)="preferences.setScoreBrightness('scoreGridBrightness', $event)" /></div>
+            </div>
+            <div class="setting-row">
+              <div class="setting-copy"><h3>Highlight audible</h3><p id="highlight-audible-description">Show only tracks audible under the current Solo/Mute settings. Score role filters still apply. Saved in your UI preferences.</p></div>
+              <div class="setting-controls"><input type="checkbox" aria-label="Highlight audible" [checked]="preferences.syncScoreMix()"
+                (change)="preferences.toggleScoreMixSync()" aria-describedby="highlight-audible-description" /></div>
+            </div>
+            <div class="setting-row">
+              <div class="setting-copy"><h3>Chord-based grid subdivisions</h3><p id="score-chord-grid-description">Show faint lines in each chord's color at its ending beat. Saved in your UI preferences.</p></div>
+              <div class="setting-controls"><input type="checkbox" aria-label="Chord-based grid subdivisions" [checked]="preferences.scoreChordGrid()"
+                (change)="preferences.toggleScoreChordGrid()" aria-describedby="score-chord-grid-description" /></div>
+            </div>
+            <div class="setting-row">
+              <div class="setting-copy"><h3>Outline non-selected tracks</h3><p id="score-outline-tracks-description">Show notes from all non-selected tracks as outlines in the score canvas. Saved in your UI preferences.</p></div>
+              <div class="setting-controls"><input type="checkbox" aria-label="Outline non-selected tracks" [checked]="preferences.scoreOutlineOtherTracks()"
+                (change)="preferences.toggleScoreOutlineOtherTracks()" aria-describedby="score-outline-tracks-description" /></div>
+            </div>
+            <div class="setting-row">
+              <div class="setting-copy"><h3>Ghost notes from other tracks</h3><p id="score-ghost-notes-description">Show other tracks in the phrase editor as outlines at half opacity. Ghost notes are informational only. Saved in your UI preferences.</p></div>
+              <div class="setting-controls"><input type="checkbox" aria-label="Ghost notes from other tracks" [checked]="preferences.scoreGhostNotes()"
+                (change)="preferences.toggleScoreGhostNotes()" aria-describedby="score-ghost-notes-description" /></div>
+            </div>
+          </section>
+        }
+        @case ('midi') {
+          <section aria-labelledby="midi-settings-title">
+            <h2 id="midi-settings-title">MIDI</h2>
+            <div class="setting-row">
+              <div class="setting-copy"><h3><vc-settings-scope-indicator scope="ui" />MIDI PPQ</h3><p>Ticks per quarter note for exported MIDI and musical time displays.</p></div>
+              <div class="setting-controls"><vc-select aria-label="MIDI PPQ" [options]="ppqOptions" [value]="'' + preferences.midiPpq()" (valueChange)="preferences.setMidiPpq(+$event)" /></div>
+            </div>
+            <div class="setting-row">
+              <div class="setting-copy"><h3><vc-settings-scope-indicator scope="sound" />Soundfonts</h3>
+                <p>Load an SF2 file up to 250 MiB, then choose it in the transport. Up to three banks stay loaded for this session; loading a fourth unloads the oldest. Loaded banks are cleared when the app closes.</p>
+              </div>
+              <div class="setting-controls"><label>Load soundfont<input type="file" accept=".sf2" aria-label="Load soundfont" [disabled]="instruments.busy()" (change)="loadSoundfont($event)" /></label></div>
+            </div>
+            @for (font of instruments.loaded(); track font.id) {
+              <div class="setting-row">
+                <div class="setting-copy"><h3><vc-settings-scope-indicator scope="sound" />{{ font.name }}</h3><p>{{ (font.size / 1048576).toFixed(1) }} MiB · {{ font.bank.presets.length }} presets</p></div>
+                <div class="setting-controls"><button type="button" [attr.aria-label]="'Unload ' + font.name" (click)="instruments.unload(font.id)">Unload</button></div>
+              </div>
+            }
+            @if (instruments.message()) { <p role="status">{{ instruments.message() }}</p> }
+            <div class="setting-row"><div class="setting-copy"><h3><vc-settings-scope-indicator scope="ui" />MIDI export track padding</h3><p>Minimum track counts per role (0–32). Adds named empty tracks after each role, including empty roles. Existing tracks are retained. Saved with the project.</p></div><div class="setting-controls">@for (role of roles; track role) {
+              <label>{{ roleNames[role] }}<input type="number" min="0" max="32" [attr.aria-label]="roleNames[role] + ' MIDI padding'" [value]="projects.project().midiPadding?.[role] ?? 0" (change)="setPadding(role, +$any($event.target).value)" /></label>
+            }</div></div>
+            <div class="setting-row">
+              <div class="setting-copy"><h3><vc-settings-scope-indicator scope="ui" />Discard old phrase editor notes when MIDI is dropped</h3><p>When off, dropped MIDI is added to the existing phrase.</p></div>
+              <div class="setting-controls"><input type="checkbox" aria-label="Discard phrase notes on MIDI drop" [checked]="preferences.discardPhraseNotesOnMidiDrop()" (change)="preferences.toggleDiscardPhraseNotesOnMidiDrop()" /></div>
+            </div>
+            <div class="setting-row">
+              <div class="setting-copy"><h3><vc-settings-scope-indicator scope="sound" />Drum pitch mapping</h3><p id="drum-mapping-description">Applies to drum pitch labels, MIDI device playback, and MIDI file exports. Chromatic uses the project’s saved drum slots on notes 36–51. Projects support up to {{ maxDrumSounds }} distinct drum sounds; replacing a sound’s final use keeps its slot. Auto uses General MIDI with the internal synth and Chromatic with a MIDI device. Currently using {{ midi.drumMapping() === 'chromatic' ? 'Chromatic (36–51)' : 'General MIDI' }}. The internal synth keeps its General MIDI drum sounds.</p></div>
+              <div class="setting-controls"><vc-select [options]="[{ value: 'auto', label: 'Auto' }, { value: 'general-midi', label: 'General MIDI' }, { value: 'chromatic', label: 'Chromatic (starting at note 36)' }]" aria-label="Drum pitch mapping" aria-describedby="drum-mapping-description"
+                [value]="preferences.drumMapping()" (valueChange)="changeDrumMapping($event)"></vc-select></div>
+            </div>
+          </section>
+        }
+        @case ('harmony') {
+          <section aria-labelledby="harmony-settings-title">
+            <h2 id="harmony-settings-title">Harmony</h2>
+            <div class="setting-row">
+              <div class="setting-copy"><h3><vc-settings-scope-indicator scope="compose" />Harmony generation</h3><p>Used when generating a chord progression. Random makes a seeded choice among Legacy, Functional, Fifths, Pop loop and Modal.</p></div>
+              <div class="setting-controls"><vc-select [options]="harmonyGenerations" aria-label="Harmony generation" [value]="harmonyValues().generation" (valueChange)="changeHarmony($event)"></vc-select></div>
+            </div>
+            <div class="setting-row">
+              <div class="setting-copy"><h3><vc-settings-scope-indicator scope="sound" />Flatten voicing (%)</h3><p id="flatten-voicing-description">Chance to move outer chord tones toward the progression's average pitch. Uses the project seed; explicit nonzero inversions are preserved. Bass roots stay independent.</p></div>
+              <div class="setting-controls"><input type="number" aria-label="Flatten voicing" aria-describedby="flatten-voicing-description" min="0" max="100" step="1"
+                [value]="harmonyValues().flattenVoicingChance"
+                (change)="projects.updateHarmonySettings({ flattenVoicingChance: +$any($event.target).value })" /></div>
+            </div>
+            <div class="setting-row">
+              <div class="setting-copy"><h3><vc-settings-scope-indicator scope="sound" />Flatten large chords</h3><p id="flatten-large-description">Also flatten chords with more than three tones.</p></div>
+              <div class="setting-controls"><input type="checkbox" aria-label="Flatten large chords" aria-describedby="flatten-large-description" [checked]="harmonyValues().flattenLargeChords"
+                (change)="projects.updateHarmonySettings({ flattenLargeChords: $any($event.target).checked })" /></div>
+            </div>
+            <div class="setting-row">
+              <div class="setting-copy"><h3><vc-settings-scope-indicator scope="sound" />Progressive voicing</h3><p id="progressive-voicing-description">Voice global and explicit section progressions toward the processed prefix. Inferred progressions use the ordinary whole-progression average.</p></div>
+              <div class="setting-controls"><input type="checkbox" aria-label="Progressive voicing" aria-describedby="progressive-voicing-description" [checked]="harmonyValues().progressiveVoicing"
+                (change)="projects.updateHarmonySettings({ progressiveVoicing: $any($event.target).checked })" /></div>
+            </div>
+            <div class="setting-row">
+              <div class="setting-copy"><h3><vc-settings-scope-indicator scope="ui" />Manual phrases follow global Mode</h3><p id="manual-mode-description">When every note in a manually edited phrase fits its current key and mode, changing global Mode translates its scale degrees into the new mode. Applies to track and section phrases, excluding drums and sections with their own Mode. Saved in your UI preferences.</p></div>
+              <div class="setting-controls"><input type="checkbox" aria-label="Manual phrases follow global Mode" [checked]="preferences.manualPhrasesFollowMode()"
+                (change)="preferences.toggleManualPhrasesFollowMode()" aria-describedby="manual-mode-description" /></div>
+            </div>
+            <div class="setting-row">
+              <div class="setting-copy"><h3><vc-settings-scope-indicator scope="ui" />Reinterpret harmony on Mode change</h3><p id="harmony-mode-description">Adapt chord roots and tones to the new mode, preserving inversions and resolving dominants. Off keeps explicit chords; Global adapts global harmony; All also adapts section chords. Applies to generated and edited chords.</p></div>
+              <div class="setting-controls"><vc-select [options]="[{ value: 'off', label: 'Off' }, { value: 'global', label: 'Global' }, { value: 'all', label: 'All' }]" aria-label="Reinterpret harmony on Mode change" aria-describedby="harmony-mode-description"
+                [value]="preferences.harmonyFollowsMode()" (valueChange)="preferences.setHarmonyFollowsMode($event)"></vc-select></div>
+            </div>
+          </section>
+        }
+        @case ('melody') {
+          <section aria-labelledby="melody-settings-title">
+            <h2 id="melody-settings-title">Melody</h2>
+            <vc-melody-global-settings [values]="projects.project().melodyGlobal ?? {}"
+              (settingsChanged)="projects.updateMelodyGlobal($event)" />
+          </section>
+        }
+        @case ('section-types') { <vc-section-type-settings /> }
+        @case ('project') {
+          <section aria-labelledby="project-title">
+            <h2 id="project-title">Project</h2>
+            <div class="setting-row">
+              <div class="setting-copy"><h3>Replace current project tab when opening projects</h3><p>Open projects in the current tab. When disabled, each opened project creates a new tab.</p></div>
+              <div class="setting-controls"><input type="checkbox" aria-label="Replace current project tab when opening projects" [checked]="preferences.replaceCurrentProjectTab()" (change)="preferences.setReplaceCurrentProjectTab($any($event.target).checked)" /></div>
+            </div>
+            <div class="setting-row">
+              <div class="setting-copy"><h3>Export filenames</h3><p>Include these fields before the project name, separated by underscores. Time uses HH-mm; sharp keys use s and flat keys use b.</p></div>
+              <div class="setting-controls"><div class="export-name-fields" role="group" aria-label="Export filename fields">
+              @for (field of exportNameFields; track field.id) {
+                <button type="button" class="appearance-toggle" [class.active]="preferences.exportNameFields().includes(field.id)"
+                  [attr.aria-pressed]="preferences.exportNameFields().includes(field.id)"
+                  (click)="preferences.toggleExportNameField(field.id)">{{ field.label }}</button>
+              }
+            </div></div>
+            </div>
+            <div class="setting-row">
+              <div class="setting-copy"><h3>Filename preview</h3><p>The same name is used for project (.vibe.json), MIDI (.mid) and audio (.opus) exports.</p></div>
+              <div class="setting-controls"><output class="export-name-preview" aria-label="Export filename preview" aria-live="polite">{{ exportNamePreview() }}.vibe.json</output></div>
+            </div>
+            <div class="setting-row">
+              <div class="setting-copy"><h3>Compact History</h3><p id="compact-history-description">Group repeated changes to the same control less than one second apart into one undo step.</p></div>
+              <div class="setting-controls"><input type="checkbox" aria-label="Compact History" [checked]="projects.compactHistory()"
+                (change)="projects.toggleCompactHistory()" aria-describedby="compact-history-description" /></div>
+            </div>
+          </section>
+        }
+
+      }
+      }
+    </div>
+  </div>
+  <footer class="preferences-transfer">
+    <div class="scope-legend" aria-label="Setting scope legend">
+      <span><vc-settings-scope-indicator scope="ui" />UI</span>
+      <span><vc-settings-scope-indicator scope="compose" />Compose / reroll</span>
+      <span><vc-settings-scope-indicator scope="sound" />Track sound</span></div>
+    <span role="status">{{ transferMessage() }}</span>
+    <input #themeFile aria-label="Import theme file" type="file" accept=".json,application/json" hidden (change)="importPreferences($event, true)" />
+    <button type="button" (click)="themeFile.click()">Import Theme</button>
+    <input #preferencesFile aria-label="Import UI preferences file" type="file" accept=".json,application/json" hidden (change)="importPreferences($event)" />
+    <button type="button" (click)="preferencesFile.click()">Import UI preferences</button>
+    <button type="button" (click)="exportPreferences()">Export UI preferences</button>
+  </footer>
+</section>

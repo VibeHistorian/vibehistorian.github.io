@@ -1,0 +1,449 @@
+@if (projects.generationError(); as error) {
+  <div class="generation-error" role="alert">
+    <span>Change cancelled. Previous working state kept. {{ error }}</span>
+    <button type="button" (click)="projects.dismissGenerationError()" aria-label="Dismiss generation error">Dismiss</button>
+  </div>
+}
+<section class="workspace-canvas" [class.quick-layout-editing]="preferences.editingQuickSettings()" aria-label="Song workspace" (pointerdown)="beginEmptyMiddleClick($event)" (pointerup)="endEmptyMiddleClick($event)" (pointercancel)="cancelEmptyMiddleClick()" (auxclick)="applyOnEmptyMiddleClick($event)">
+  <aside class="track-browser" aria-label="Tracks">
+    <div class="track-groups">
+      @for (group of roles; track group.role) {
+        <section class="track-group" [class]="'track-group ' + group.role" [class.group-selected]="selectedRole() === group.role">
+          <header class="group-heading">
+            <button type="button" class="group-select" [disabled]="editing()" [attr.aria-pressed]="selectedRole() === group.role" [attr.aria-expanded]="!isGroupCollapsed(group.role)" (click)="selectRoleHeading(group.role)"
+              [attr.aria-label]="group.name" [title]="group.name + ' — Select role; middle-click to solo only this role'" (mousedown)="preventSelectionScroll($event)" (auxclick)="soloSelection($event, roleTrackIds(group.role))">
+              <svg class="group-role-icon" viewBox="0 0 36 36" width="24" height="24" aria-hidden="true" focusable="false"><use [attr.href]="'role-icons.svg#' + group.role" /></svg>
+            </button>
+            <vc-mix-buttons class="group-mix-controls" [trackIds]="roleTrackIds(group.role)" [label]="group.name + ' tracks'" />
+            <div class="group-policy-toggles">
+              <button type="button" class="group-policy-toggle" aria-label="On Compose"
+                title="On Compose: reroll this role's track settings when composing"
+                [class.active]="policyFor(group.role).onCompose === true" [attr.aria-pressed]="policyFor(group.role).onCompose === true"
+                [disabled]="editing()" (click)="updateRolePolicy(group.role, { onCompose: !policyFor(group.role).onCompose })">✦</button>
+              <button type="button" class="group-policy-toggle" aria-label="Randomize instruments"
+                title="Randomize instruments: choose instruments on settings rerolls and when increasing the track total"
+                [class.active]="instrumentPolicyFor(group.role).randomize" [attr.aria-pressed]="instrumentPolicyFor(group.role).randomize"
+                [disabled]="editing()" (click)="updateInstrumentPolicy(group.role, { randomize: !instrumentPolicyFor(group.role).randomize })">♪</button>
+            </div>
+            <input class="group-count" type="number" [min]="minimumRoleCount()[group.role]" [max]="64 - project().tracks.length + tracksFor(group.role).length" step="1"
+              [attr.aria-label]="group.name + ' track count'" title="Change total tracks; locked tracks are kept"
+              [value]="tracksFor(group.role).length" [disabled]="editing()" (focus)="$any($event.target).select()"
+              (keydown.enter)="$any($event.target).blur()" (change)="changeRoleCount(group.role, $event)" />
+            <button type="button" class="add-track-button" [disabled]="editing()" (click)="addTrack(group.role)"
+              [attr.aria-label]="'Add ' + group.name + ' track'" [title]="'Add ' + group.name + ' track'">＋</button>
+              <button type="button" class="add-track-button" [attr.aria-label]="'Reroll ' + group.name + ' tracks'" [title]="'Reroll unlocked ' + group.name + ' track settings'"
+                [disabled]="editing() || !canRerollRole(group.role)" (click)="rerollRole(group.role)">↻</button>
+            <vc-context-menu [items]="presetContextItems(group.role)" (action)="loadQuickPreset(group.role, $event)"><button type="button" class="add-track-button" [disabled]="editing()" [attr.aria-label]="group.name + ' preset manager'" (contextmenu)="refreshQuickPresets($event)" title="Manage track presets · Right-click for quick presets · Shift+right-click to invert Replace" aria-haspopup="dialog" (click)="openTrackPresets(group.role)">☰</button></vc-context-menu>
+            <button type="button" class="collapse-group-button" [disabled]="editing()" [attr.aria-expanded]="!isGroupCollapsed(group.role)"
+              [attr.aria-label]="(isGroupCollapsed(group.role) ? 'Expand ' : 'Collapse ') + group.name + ' randomization settings'"
+              [title]="(isGroupCollapsed(group.role) ? 'Expand ' : 'Collapse ') + group.name + ' randomization settings'"
+              (click)="toggleGroupCollapsed(group.role)">{{ isGroupCollapsed(group.role) ? '›' : '▵' }}</button>
+          </header>
+          <div class="track-policy-header">
+            <vc-track-generation-policy [role]="group.role" [policy]="policyFor(group.role)" [expanded]="!isGroupCollapsed(group.role)" [disabled]="editing()" (policyChanged)="updateRolePolicy(group.role, $event)"
+              (reseedRequested)="reseedRole(group.role)" [instrumentPolicy]="instrumentPolicyFor(group.role)" (instrumentPolicyChanged)="updateInstrumentPolicy(group.role, $event)" />
+            @if (rerollMessageFor(group.role)) { <span role="status">{{ rerollMessageFor(group.role) }}</span> }
+          </div>
+          @if (!generationAvailable[group.role]) {
+            <p class="generation-status">Manual notes · automatic generation coming later</p>
+          }
+          @for (track of tracksFor(group.role); track track.id) {
+            <article class="track-row-card" [class.selected]="settingsTarget().kind === 'global-track' && selectedTrackId() === track.id">
+              <span class="track-row-gradient" aria-hidden="true"></span>
+              <div class="track-line" (click)="selectTrack(track.id)">
+                <vc-context-menu [items]="trackContextItems()" (action)="trackContextAction(track.id, $event)"><button type="button" class="track-select" [disabled]="editing()"
+                  title="Select track; middle-click to solo only this track" (mousedown)="preventSelectionScroll($event)" (auxclick)="soloSelection($event, [track.id])"
+                  [attr.aria-pressed]="settingsTarget().kind === 'global-track' && selectedTrackId() === track.id">
+                  <span>{{ track.name }}</span>
+                </button></vc-context-menu>
+                <div class="track-reroll-actions" (click)="$event.stopPropagation()">
+                  <vc-mix-buttons class="track-level" [trackIds]="[track.id]" [label]="track.name" />
+                  <button type="button" [disabled]="editing()" [attr.aria-pressed]="track.rerollLocked ?? false"
+                    [class.parameter-locks-active]="!track.rerollLocked && !!track.parameterLocks?.length"
+                    [attr.title]="(track.rerollLocked ? 'Unlock reroll for ' : 'Lock reroll for ') + track.name"
+                    [attr.aria-label]="(track.rerollLocked ? 'Unlock reroll for ' : 'Lock reroll for ') + track.name"
+                    (click)="projects.setTrackRerollLock(track.id, !track.rerollLocked)">🔒︎</button>
+                  <button type="button" [disabled]="editing() || track.rerollLocked" [attr.aria-label]="'Reroll ' + track.name" [title]="'Reroll ' + track.name"
+                    (click)="rerollRole(track.role, track.id)">↻</button>
+                </div>
+                @if (track.role === 'drums') {
+                  <vc-menu-select [groups]="drumMenuGroups" [options]="drumSelectOptions()[track.id]" class="track-inline-select track-instrument" [attr.aria-label]="'Percussion instrument ' + track.name"
+                    [selectDefault]="36" [value]="drumPitch(track)" [title]="'Percussion instrument: ' + instrumentName(track)" [disabled]="editing()"
+                    (click)="$event.stopPropagation()" (valueChange)="updateDrumPitch(track, $event)"></vc-menu-select>
+                } @else {
+                  <vc-menu-select [groups]="instrumentMenuGroups" [options]="instrumentSelectOptions()[track.id]" class="track-inline-select track-instrument" [attr.aria-label]="'Instrument ' + track.name"
+                    [selectDefault]="defaultMix[track.role].program" [value]="track.mix.program" [title]="'Instrument: ' + instrumentName(track)" [disabled]="editing()"
+                    (click)="$event.stopPropagation()" (valueChange)="updateInstrument(track, $event)"></vc-menu-select>
+                }
+                <vc-select [options]="channelSelectOptions()" class="track-inline-select track-channel" [attr.aria-label]="'MIDI channel ' + track.name"
+                  [selectDefault]="defaultChannel(track)" [value]="track.midiChannel" [disabled]="editing() || track.role === 'drums'"
+                  [title]="track.role === 'drums' ? 'Percussion uses MIDI channel 10' : 'MIDI channel ' + track.midiChannel"
+                  (click)="$event.stopPropagation()" (valueChange)="updateChannel(track, $event)"></vc-select>
+                <div class="track-mix-controls" (click)="$event.stopPropagation()">
+                  <vc-compact-knob [mini]="true" [showValueBelow]="true" [label]="'Pan ' + track.name" [defaultValue]="0"
+                    [value]="track.mix.panPercent" [minimum]="-100" [maximum]="100" valueFormat="pan"
+                    (valuePreview)="previewTrackMix(track.id, 'panPercent', $event)"
+                    (valueCommit)="updateTrackMix(track.id, 'panPercent', $event)" />
+                  <vc-compact-knob [mini]="true" [showValueBelow]="true" [label]="'Volume ' + track.name" [defaultValue]="100"
+                    [value]="track.mix.volumePercent" [minimum]="0" [maximum]="maximumVolume" [step]="0.1" valueFormat="decibels"
+                    (valuePreview)="previewTrackMix(track.id, 'volumePercent', $event)"
+                    (valueCommit)="updateTrackMix(track.id, 'volumePercent', $event)" />
+                </div>
+              </div>
+
+            </article>
+          }
+        </section>
+      }
+    </div>
+  </aside>
+
+  <main class="song-canvas" [class.editing]="editing()" [class.settings-in-inspector]="usePartSettingsInspector()" [class.group-track-settings]="showGroupTrackSettings()">
+    @defer (when editing()) {
+    @if (editing()) {
+      <vc-edit-workspace #phraseEditor [initialNoteId]="editingNoteId()" [sectionId]="editSectionId()" [phraseStartBeat]="editPhraseOffset()"
+        [phraseLength]="editPhraseLength()" (applied)="closeEditor()" (cancelled)="closeEditor()" />
+    }
+    }
+      <vc-arrangement-overview [project]="project()"
+        [sectionHarmony]="sectionHarmony()"
+        [loopRange]="loopRange()"
+        [settingsTarget]="settingsTarget()"
+        [selectedSectionIds]="selectedSectionIds()" [selectedTrackId]="selectedTrackId()" [playheadPercent]="playheadPercent()"
+        (groupSelected)="selectRole($event)"
+        (sectionAddRequested)="addSection($event)"
+        (tracksChangeRequested)="changeOverviewTracks($event)"
+        (phraseCopyRequested)="projects.copyArrangementPhrase($event)"
+        (sectionDuplicateRequested)="duplicateSection($event)"
+        (sectionRemoveRequested)="removeSection($event)"
+        (randomizeRequested)="randomizeArrangement()"
+        (variationsRequested)="openArrangementVariations(true)"
+        (arrangementOnComposeChanged)="projects.updateSettings({ randomizeArrangementOnCompose: $event })"
+        (arrangementPreviewChanged)="projects.updateSettings({ arrangementPreview: $event })"
+        (arrangementManualChanged)="projects.updateSettings({ arrangementManual: $event })"
+        (arrangementSelected)="workspaceUi.selectArrangement()" (sectionSelected)="selectOverviewSection($event.sectionId, $event.trackId, $event)"
+        (selectionCleared)="workspaceUi.clearSelection()"
+        (cellSelected)="selectCell($event.sectionId, $event.role)"
+        (trackSelected)="selectSectionTrack($event.sectionId, $event.trackId)"
+        (partToggled)="toggleArrangementTrack($event.sectionId, $event.trackId, $event.present)"
+        (groupPresenceToggled)="projects.toggleSectionRolePresence($event.sectionId, $event.role)">
+      <vc-project-tabs arrangementProjectTabs [disabled]="editing()" />
+      </vc-arrangement-overview>
+
+      @if (!usePartSettingsInspector()) {
+      <section class="part-settings-panel" [attr.data-control-role]="partScope() ? partRole() : null" aria-label="Part settings">
+        <header class="part-settings-heading" [class.role-settings]="!!editableScopes().length">
+          <div class="part-heading-context">
+            @if (localPartTarget()) { <i class="role-dot" [class]="partRole()"></i> }
+            <span class="part-context-label">
+              <span class="part-location-label" [class.global-location]="!('sectionId' in settingsTarget())">{{ contextLocationLabel() }}</span>
+              @if (contextPartLabel()) { <span>· {{ contextPartLabel() }}</span> }
+            </span>
+          </div>
+          @if (localPartTarget(); as target) {
+            @if (editableScopes().length) {
+              <vc-part-scope-actions layout="header" [group]="target.kind === 'section-role'"
+                [hasOverrides]="!!overriddenKeys().length" [hasExceptions]="!!trackExceptionCount()"
+                [resetChangesValues]="partResetChangesValues()"
+                [destinationCount]="partDestinations().length" [message]="partWorkflowMessage()"
+                [canCopyOverrides]="partCopyAvailability().overrides" [canCopyEffective]="partCopyAvailability().effective"
+                [canCopyGlobals]="canCopyPartGlobals()" (globalsRequested)="runPartWorkflow('globals')"
+                (feedbackDismissed)="dismissPartWorkflowFeedback()"
+                (inheritRequested)="resetPartSettings(target)" (freezeRequested)="runPartWorkflow('freeze')"
+                (resetCellRequested)="runPartWorkflow('reset-cell')" (applyRequested)="runPartWorkflow($event)" />
+            }
+          }
+          <div class="quick-settings-actions">
+            @if (groupSettingsSelected()) {
+              <ng-container [ngTemplateOutlet]="groupTrackToggle" />
+            }
+            @if (editableScopes().length || preferences.editingQuickSettings()) {
+              @if (preferences.editingQuickSettings()) {
+                <button type="button" class="part-inspector-link" [disabled]="!editableScopes().length" (click)="preferences.resetQuickSettings(partRole())">Reset to default</button>
+              }
+              <button type="button" class="part-inspector-link" [attr.aria-pressed]="preferences.editingQuickSettings()" (click)="toggleQuickSettingsEdit()">{{ preferences.editingQuickSettings() ? 'Save quick settings' : 'Edit quick settings' }}</button>
+            }
+            <button type="button" class="part-panel-toggle" [disabled]="preferences.editingQuickSettings()" [attr.aria-expanded]="partPanelExpanded()"
+              [attr.aria-label]="(partPanelExpanded() ? 'Collapse ' : 'Expand ') + partPanelLabel()"
+              [title]="(partPanelExpanded() ? 'Collapse ' : 'Expand ') + partPanelLabel()"
+              aria-controls="part-settings-content" (click)="partPanelExpanded.set(!partPanelExpanded())">
+              <span aria-hidden="true">{{ partPanelExpanded() ? '▵' : '›' }}</span>
+            </button>
+          </div>
+        </header>
+        @if (partPanelExpanded()) {
+          <div id="part-settings-content" class="part-settings-content">
+            @if (preferences.editingQuickSettings()) {
+              <span class="placement-help" role="status">Click a control to move it between quick settings and inspector. Categories and control order stay fixed. Reset restores defaults for {{ roleName(partRole()) }}.</span>
+            }
+            @if (!partGenerationAvailable()) {
+              <span class="part-inheritance">Automatic melody generation is not available yet. Add notes in the track’s piano roll.</span>
+            }
+            @if (partEditError()) { <span class="channel-warning" role="status">{{ partEditError() }}</span> }
+            @if (trackExceptionCount()) { <span class="part-inheritance">{{ trackExceptionCount() }} track exception(s) remain active.</span> }
+            @if (manualTrackNames() && partGenerationAvailable()) { <span class="part-inheritance">Some controls are not available for manual phrases: {{ manualTrackNames() }}.</span> }
+            @if (selectedSection()) {
+              <span class="part-inheritance">Select a group cell or track button to view its part settings.</span>
+            }
+            @if (showGroupTrackSettings()) {
+              @for (item of groupTrackSettings(); track item.key) {
+                <section class="group-track-settings-row" [attr.data-track-id]="item.track.id" [attr.aria-label]="item.track.name + ' quick settings'">
+                  <span class="group-track-settings-order">{{ $index + 1 }}</span>
+                  @if (partEditErrorFor(item.scope); as error) { <span class="channel-warning" role="status">{{ error }}</span> }
+                  <vc-part-settings-editor [scope]="item.scope" [role]="item.track.role" [values]="item.values" [melodyHits]="melodyRhythmHits(item.scope)" [advanced]="false" [showGroupTitles]="false" [local]="!!localPartTarget()" [overriddenKeys]="item.overriddenKeys"
+                    (settingsChanged)="editPartSettings(item.scope, $event)" (inheritRequested)="resetPartSettings(item.scope, $event)" />
+                </section>
+              }
+            } @else {
+            @for (item of editableScopes(); track item.key) {
+              <vc-part-settings-editor [scope]="item.scope" [role]="partRole()" [values]="partValues()" [melodyHits]="melodyRhythmHits(item.scope)" [advanced]="false" [showGroupTitles]="false" [local]="!!localPartTarget()" [overriddenKeys]="overriddenKeys()"
+                (settingsChanged)="editPartSettings(item.scope, $event)" (inheritRequested)="resetPartSettings(item.scope, $event)" />
+            }
+            }
+          </div>
+        }
+      </section>
+
+      }
+
+      <section class="score-panel" aria-label="Song score" [class.midi-drag-over]="editor()?.midiDragOver()"
+        (dragenter)="editor()?.midiDragEnter($event)" (dragover)="editor()?.midiDragEnter($event)"
+        (dragleave)="editor()?.midiDragLeave($event)" (drop)="editor()?.dropMidi($event)">
+        <div class="score-scroll">
+          <div class="score-canvas">
+            <div class="score-ruler">
+              <div class="score-role-controls" aria-label="Score role visibility">
+                @for (group of roles; track group.role) {
+                  <button type="button" [class.active]="displayedRoles().has(group.role)"
+                    [attr.aria-pressed]="displayedRoles().has(group.role)" [attr.aria-label]="group.name"
+                    [title]="group.name + ' — Middle-click to solo/reset'" (click)="toggleScoreRole(group.role)"
+                    (mousedown)="$event.button === 1 && $event.preventDefault()"
+                    (auxclick)="soloScoreRole($event, group.role)"><i class="role-dot" [class]="group.role" aria-hidden="true"></i></button>
+                }
+              </div>
+              <div class="score-ruler-viewport" [style.width.px]="scoreViewport().width">
+                <div class="score-ruler-sections">
+                  @if (scoreTimelineBounds().startBeat < 0) {
+                    <span class="score-ruler-overflow" [style.left.px]="scoreHeaderX(scoreTimelineBounds().startBeat)" [style.width.px]="scoreHeaderX(0) - scoreHeaderX(scoreTimelineBounds().startBeat)">00</span>
+                  }
+                  @if (scoreTimelineBounds().endBeat > totalBeats()) {
+                    <span class="score-ruler-overflow" [style.left.px]="scoreHeaderX(totalBeats())" [style.width.px]="scoreHeaderX(scoreTimelineBounds().endBeat) - scoreHeaderX(totalBeats())">END</span>
+                  }
+                  @for (section of scoreHeaderSections(); track section.section.id) {
+                    <button type="button" class="score-ruler-section" vcScoreChordLabels
+                      [style.left.px]="section.left" [style.width.px]="section.width"
+                      [class.selected]="selectedSectionIds().includes(section.section.id)"
+                      [attr.aria-pressed]="selectedSectionIds().includes(section.section.id)"
+                      [attr.aria-label]="'Select ' + sectionLabel(section.section.type) + ' section'"
+                      (click)="workspaceUi.selectSection(section.section.id)">
+                      @for (slot of section.slots; track slot.id) {
+                        <span class="score-chord-slot" [style.left.px]="slot.left" [style.width.px]="slot.width" [style.--chord-hue]="slot.chord.hue"
+                          [attr.data-start-beat]="slot.startBeat" [attr.data-end-beat]="slot.endBeat">
+                          @if (slot.measureRange) {
+                            <span class="score-section-measure" [title]="slot.measureRange">
+                              <span class="measure-range">{{ slot.measureRange }}</span><span class="measure-end">{{ slot.endMeasure }}</span>
+                            </span>
+                          }
+                          <span class="score-chord-label" [title]="slot.chord.label" [attr.data-short]="slot.chord.label.slice(0, 1) + '...'"><span class="score-chord-name">{{ slot.chord.label }}</span></span>
+                        </span>
+                        <i class="score-header-separator" [class.section-end]="slot.sectionEnd" [style.left.px]="slot.endX"
+                          [style.--chord-hue]="slot.chord.hue" [attr.data-beat]="slot.endBeat" aria-hidden="true"></i>
+                      }
+                    </button>
+                  }
+                  @if (loopRange(); as range) {
+                    <i class="score-loop-line" [style.left.px]="scoreHeaderX(range.startBeat)"
+                      [style.width.px]="scoreHeaderX(range.endBeat) - scoreHeaderX(range.startBeat)" aria-hidden="true"></i>
+                  }
+                </div>
+              </div>
+            </div>
+              <div class="score-track-lanes">
+                <vc-score-canvas [drumSlots]="project().drumSlots" [tracks]="scoreTracks()" [notes]="canvasNotes()" [sections]="timelineSections()"
+                  [ghostNotes]="ghostNotes()"
+                  [chordBoundaries]="scoreChordBoundaries()"
+                  [notesReady]="!editing() || (editor()?.draftReady() ?? false)"
+                  [totalBeats]="scoreTimelineBeats()" [timelineStartBeat]="scoreTimelineBounds().startBeat" [playheadPercent]="scorePlayheadPercent()" [selectedTrackId]="selectedTrackId()"
+                  [sectionFocus]="scoreSectionFocus()" (viewportChanged)="scoreViewport.set($event)"
+                  (seekRequested)="seek($event)"
+                  (trackAddRequested)="addScoreTrack($event)"
+                  [canRemoveTrack]="project().tracks.length > 1" (noteRemoveRequested)="removeScoreTrack($event)"
+                  [hiddenTrackIds]="editing() ? editingHiddenTracks : hiddenTracks()" [editable]="editing()" [editBounds]="editing() ? scoreSectionFocus() : null" [velocityVisible]="editing()"
+                  (noteSelected)="canvasNoteSelected($event)" (noteTrackSelected)="selectNoteTrack($event)" (noteChanged)="canvasNoteChanged($event)"
+                  [selectedNoteIds]="editor()?.selectedNoteIds() ?? []" [snapBeats]="editor()?.snapBeats() ?? 0.25" [placementDuration]="editor()?.placementDuration ?? 0.5"
+                  [snapToScale]="editor()?.snapToScale() ?? true" [scalePitchClasses]="editor()?.scalePitchClasses() ?? []"
+                  (selectionChanged)="editor()?.selectNotes($event)" (notesChanged)="canvasNotesChanged($event)"
+                  (splitRequested)="canvasSplit($event)" (deleteRequested)="canvasDelete($event)"
+                  (auditionRequested)="auditionCanvasNotes($event)"
+                  (noteAdded)="canvasNoteAdded($event)" (applyRequested)="editor()?.smartExit()" />
+              </div>
+          </div>
+        </div>
+        @if (editing()) {
+        <footer class="score-display-header" aria-label="Score edit actions">
+            <button type="button" class="export-phrase" [disabled]="!editor()?.draftReady()"
+              title="Download the current phrase as a MIDI file, including unapplied edits."
+              (click)="editor()?.exportPhrase()">Export Phrase</button>
+            <vc-compact-knob label="Transpose phrase" description="Transpose the whole phrase freely in semitones" unit=" st"
+              [mini]="true" [hoverLabelOnly]="true" [minimum]="-36" [maximum]="36" [defaultValue]="0"
+              [value]="editor()?.freeTranspose() ?? 0" (valueCommit)="editor()?.transposePhrase($event)" />
+            <button type="button" title="Undo. Shortcuts: Settings > Shortcuts." [disabled]="!editor()?.canUndo()" (click)="editor()?.undo()">Undo phrase</button>
+            <button type="button" title="Redo. Shortcuts: Settings > Shortcuts." [disabled]="!editor()?.canRedo()" (click)="editor()?.redo()">Redo phrase</button>
+            <button type="button" (click)="editor()?.cancelChanges()">Cancel</button>
+            @if (editor(); as edit) {
+              <button type="button" [disabled]="selectedPart() === 'drums'" [class.active]="edit.snapToScale() && selectedPart() !== 'drums'" [attr.aria-pressed]="edit.snapToScale()" aria-label="Snap to scale/key" title="Snap pitch edits to the current key and scale" (click)="edit.snapToScale.update(toggleBoolean)">Snap to scale/key</button>
+            }
+            <button type="button" (click)="editor()?.applyLocalChanges()" [disabled]="!editSectionId() || !editor()?.hasChanges()">Local Apply</button>
+            <button type="button" [class.active]="editor()?.hasChanges()" [disabled]="!editor()?.hasChanges()" (click)="editor()?.applyChanges()">Apply</button>
+        </footer>
+        }
+      </section>
+  </main>
+
+    <aside id="part-inspector" class="context-inspector" [attr.data-control-role]="editing() ? selectedPart() : partScope() ? partRole() : null" tabindex="-1" aria-label="Selection inspector">
+      @if (editing()) {
+        @if (editor(); as edit) { <ng-container [ngTemplateOutlet]="edit.inspectorTemplate()" /> }
+      } @else {
+      <header class="canvas-heading inspector-heading">
+          <h2>
+            @if (partScope()) { <i class="role-dot" [class]="partRole()" aria-hidden="true"></i> }
+            @if (settingsTarget().kind === 'arrangement') {
+              Arrangement
+            } @else if (selectedSection(); as section) {
+              {{ sectionLabel(section.type) }}
+            } @else if (settingsTarget().kind === 'global-role' || settingsTarget().kind === 'section-role') {
+              {{ roleName(partRole()) }} group
+            } @else {
+              <span>{{ contextPartLabel() }}<span class="inspector-name-separator">·</span>{{ roleName(partRole()) }}</span>
+            }
+          </h2>
+        <p class="eyebrow">{{ settingsTarget().kind === 'arrangement' ? 'ALL SECTIONS' : localPartTarget() ? settingsTarget().kind === 'section-role' ? 'Section role group' : 'Section track' : selectedSection() ? 'Section' : selectedRole() ? 'Role Group' : 'Track' }}</p>
+      </header>
+
+      @if (usePartSettingsInspector() && groupSettingsSelected()) {
+        <ng-container [ngTemplateOutlet]="groupTrackToggle" />
+      }
+      @if (settingsTarget().kind === 'arrangement' || 'sectionId' in settingsTarget()) {
+        <button type="button" class="restore-track-button inspector-variations" (click)="openArrangementVariations()" aria-label="Inspect selected arrangement variations">Variations…</button>
+      }
+      @if (usePartSettingsInspector() && preferences.editingQuickSettings()) {
+        <button type="button" class="part-inspector-link" (click)="toggleQuickSettingsEdit()">Save quick settings</button>
+      }
+
+      @if (localPartTarget()) {
+        <div class="inspector-selection">
+          <span class="selection-kicker">{{ contextLocationLabel() }}</span>
+          <span>{{ inheritanceLabel() }}</span>
+          @if (!partGenerationAvailable()) { <span>Automatic melody generation is not available yet. Use Edit notes on the global track.</span> }
+          @if (partEditError()) { <span class="channel-warning" role="status">{{ partEditError() }}</span> }
+          @if (trackExceptionCount()) { <span>{{ trackExceptionCount() }} track exception(s) remain active.</span> }
+          @if (manualTrackNames() && partGenerationAvailable()) { <span>Some controls are not available for manual phrases: {{ manualTrackNames() }}.</span> }
+          @for (item of editableScopes(); track item.key) {
+            <vc-part-settings-editor [scope]="item.scope" [role]="partRole()" [values]="partValues()" [melodyHits]="melodyRhythmHits(item.scope)" [inspectorOnly]="!usePartSettingsInspector()" [local]="true" [overriddenKeys]="overriddenKeys()"
+              (settingsChanged)="editPartSettings(item.scope, $event)" (inheritRequested)="resetPartSettings(item.scope, $event)" />
+          }
+          @if (settingsTarget().kind === 'section-role') {
+            <div class="section-track-controls">
+              <p class="eyebrow">TRACKS IN SECTION</p>
+              <div class="section-presence-role" [attr.data-control-role]="partRole()" [attr.aria-label]="roleName(partRole()) + ' presence'">
+                @for (track of contextTracks(); track track.id) {
+                  <vc-compact-toggle [label]="track.name" [description]="'Include ' + track.name + ' in this section.'"
+                    [active]="contextTrackPresent(track)" (toggled)="toggleContextTrackPresence(track)" />
+                }
+              </div>
+            </div>
+          } @else {
+            @for (track of contextTracks(); track track.id) {
+              <section class="quick-settings-group">
+                <vc-compact-toggle [attr.data-control-role]="track.role" label="Include in this section"
+                  [description]="'Include ' + track.name + ' in the selected section.'"
+                  [active]="contextTrackPresent(track)" (toggled)="toggleContextTrackPresence(track)" />
+                <button type="button" class="restore-track-button" (click)="selectTrack(track.id)">Edit global track settings</button>
+                <button type="button" class="restore-track-button" (click)="openTrackEditor(track.id)">Edit notes for entire track</button>
+                @if (track.editedPhrase && generationAvailable[track.role]) {
+                  <button type="button" class="restore-track-button" (click)="projects.clearTrackPhrase(track.id)">Restore generated notes for entire track</button>
+                }
+              </section>
+            }
+          }
+        </div>
+      } @else if (settingsTarget().kind === 'arrangement') {
+        <div class="inspector-selection">
+          <vc-section-context-editor [section]="project().arrangement[0]" [allSections]="true" />
+        </div>
+      } @else if (selectedSection(); as section) {
+        <div class="inspector-selection">
+          <span class="selection-kicker">{{ selectedTrack().name }} · {{ sectionLabel(section.type) }}</span>
+          @if (selectedSectionIds().length > 1) {
+            <span class="selection-kicker">{{ selectedSectionIds().length }} sections selected · editing {{ sectionLabel(section.type) }}</span>
+          }
+          <label class="quick-field">Section type
+            <vc-select [options]="sectionSelectOptions()" selectDefault="VERSE1" [value]="section.type" (valueChange)="updateSectionType($event)"></vc-select>
+          </label>
+          <div class="section-length-row">
+            <label class="quick-field">Length in bars
+              <input type="number" min="1" [max]="maxSectionMeasures()" [value]="section.measures" (change)="updateSectionMeasures($event)" />
+            </label>
+            <span class="section-beat-count">{{ selectedSectionBeats() }} beats</span>
+          </div>
+          <div class="section-actions">
+            <button type="button" (click)="moveSection(-1)" [disabled]="selectedSectionIndex() <= 0" aria-label="Move section earlier">↑</button>
+            <button type="button" (click)="moveSection(1)" [disabled]="selectedSectionIndex() >= project().arrangement.length - 1" aria-label="Move section later">↓</button>
+            <button type="button" (click)="duplicateSection()" [disabled]="project().arrangement.length >= 32 || totalMeasures() + section.measures > 128">Duplicate</button>
+            <button type="button" class="remove-track" (click)="removeSection()" [disabled]="project().arrangement.length <= 1">Remove</button>
+          </div>
+          <vc-section-context-editor [section]="section" />
+          <div class="section-track-controls">
+            <div class="inspector-section-heading"><p class="eyebrow">TRACKS IN SECTION</p>
+              <button type="button" (click)="randomizeSectionPresence(section)">Reroll</button>
+            </div>
+            <div class="section-presence-columns">
+              @for (group of roles; track group.role) {
+                <div class="section-presence-role" [attr.data-control-role]="group.role" [attr.aria-label]="group.name + ' presence'">
+                  <span class="presence-role-heading" [title]="group.name">{{ group.name }}</span>
+                  @for (track of tracksFor(group.role); track track.id) {
+                    <vc-compact-toggle [label]="track.name" [description]="'Include ' + track.name + ' in this section.'"
+                      [active]="trackPresent(section, track)" (toggled)="toggleArrangementTrack(section.id, track.id, !trackPresent(section, track))" />
+                  }
+                </div>
+              }
+            </div>
+          </div>
+        </div>
+      } @else {
+        <div class="inspector-selection">
+          @if (selectedRole(); as role) {
+            <span class="selection-kicker">{{ tracksFor(role).length }} tracks · shared generation settings</span>
+          } @else {
+            <label class="track-name-field"><input aria-label="Track name" [value]="selectedTrack().name" maxlength="48" (change)="updateTrackName($event)" /></label>
+            @if (hasChannelCollision()) { <span class="channel-warning" role="status">Another track also uses channel {{ selectedTrack().midiChannel }}.</span> }
+            <div class="track-actions" aria-label="Track actions">
+              <button type="button" (click)="openTrackEditor(selectedTrack().id)">Edit notes</button>
+              <button type="button" (click)="duplicateTrack(selectedTrack().id)">Duplicate</button>
+              <button type="button" [disabled]="!canMoveTrack(selectedTrack().id, -1)" (click)="reorderTrack(selectedTrack().id, -1)" aria-label="Move track up">↑</button>
+              <button type="button" [disabled]="!canMoveTrack(selectedTrack().id, 1)" (click)="reorderTrack(selectedTrack().id, 1)" aria-label="Move track down">↓</button>
+              @if (canRemoveTrack(selectedTrack().id)) { <button type="button" class="remove-track" (click)="removeTrack(selectedTrack().id)">Remove</button> }
+            </div>
+            @if (selectedTrack().editedPhrase && partGenerationAvailable()) { <button type="button" class="restore-track-button" (click)="restoreTrackPhrase()">Restore generated notes</button> }
+          }
+        </div>
+
+        <section class="quick-settings-group" aria-label="Part settings">
+          @if (!partGenerationAvailable()) { <span class="part-inheritance">Automatic melody generation is not available yet. Add notes with Edit notes.</span> }
+          @if (partEditError()) { <span class="channel-warning" role="status">{{ partEditError() }}</span> }
+          @for (item of editableScopes(); track item.key) {
+            <vc-part-settings-editor [scope]="item.scope" [role]="partRole()" [values]="partValues()" [melodyHits]="melodyRhythmHits(item.scope)" [inspectorOnly]="!usePartSettingsInspector()"
+              (settingsChanged)="editPartSettings(item.scope, $event)" />
+          }
+        </section>
+
+      }
+      }
+    </aside>
+</section>
+
+<ng-template #groupTrackToggle>
+  <button type="button" class="group-track-toggle" [attr.aria-pressed]="showGroupTrackSettings()"
+    aria-label="Show individual track quick settings" title="Toggle individual track quick settings"
+    aria-controls="part-settings-content" (click)="toggleGroupTrackSettings()">?</button>
+</ng-template>

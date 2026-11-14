@@ -1,0 +1,51 @@
+import { InstrumentSettingsService } from './instrument-settings.service';
+import { inject, Injectable, signal } from '@angular/core';
+import type { CompositionProject } from '../project/project.model';
+import { renderProjectAudio, type AudioExportRegion } from './audio-export';
+
+@Injectable({ providedIn: 'root' })
+export class AudioExportService {
+  private readonly instruments = inject(InstrumentSettingsService);
+  readonly busy = signal(false);
+  readonly status = signal('');
+  readonly progress = signal(0);
+
+  async export(project: CompositionProject, region?: AudioExportRegion): Promise<Blob> {
+    if (this.busy()) throw new Error('An audio export is already running.');
+    const kind = this.instruments.kind(), bank = this.instruments.selectedBank();
+    this.busy.set(true);
+    this.progress.set(0);
+    this.status.set('Rendering audio: 0%...');
+    try {
+      // Let the busy state paint before preparing the offline graph.
+      await new Promise<void>(resolve => setTimeout(resolve, 0));
+      const buffer = await renderProjectAudio(project, percent => {
+        this.progress.set(percent);
+        this.status.set(`Rendering audio: ${percent}%...`);
+      }, kind, bank, region);
+      return await this.encode(buffer);
+    } finally {
+      this.busy.set(false);
+      this.status.set('');
+      this.progress.set(0);
+    }
+  }
+
+  private encode(buffer: AudioBuffer): Promise<Blob> {
+    return new Promise((resolve, reject) => {
+      const worker = new Worker(new URL('./opus-encoder.worker', import.meta.url), { type: 'module' });
+      const finish = () => worker.terminate();
+      worker.onmessage = ({ data }: MessageEvent<{ blob?: Blob; error?: string }>) => {
+        finish();
+        if (data.blob) resolve(data.blob);
+        else reject(new Error(data.error ?? 'Audio encoding failed.'));
+      };
+      worker.onerror = () => { finish(); reject(new Error('The audio encoder could not run.')); };
+      worker.onmessageerror = () => { finish(); reject(new Error('The audio encoder returned an invalid result.')); };
+      try {
+        const channels = Array.from({ length: buffer.numberOfChannels }, (_, index) => buffer.getChannelData(index));
+        worker.postMessage({ channels, sampleRate: buffer.sampleRate }, channels.map(channel => channel.buffer));
+      } catch (error) { finish(); reject(error); }
+    });
+  }
+}

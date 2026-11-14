@@ -1,0 +1,361 @@
+@import '@angular/cdk/overlay-prebuilt.css';
+@import '@fontsource/dm-sans/400.css';
+@import '@fontsource/dm-sans/500.css';
+@import '@fontsource/dm-sans/600.css';
+@import '@fontsource/dm-sans/700.css';
+@import '@fontsource/dm-mono/400.css';
+@import '@fontsource/dm-mono/500.css';
+
+/* Appearance preview backdrop */
+.cdk-overlay-backdrop.appearance-preview { background: transparent; }
+
+/* Theme tokens */
+:root {
+  color-scheme: dark;
+  font-family: var(--font-ui);
+  background: var(--surface-canvas);
+  color: var(--text-primary);
+  font-synthesis: none;
+  text-rendering: optimizeLegibility;
+  -webkit-font-smoothing: antialiased;
+
+  /* Workspace width */
+  --workspace-max-width: 100vw;
+  --workspace-edge-space: 5px;
+  --workspace-panel-radius: var(--radius-panel);
+  --workspace-dock-radius: var(--radius-panel-large);
+  --workspace-group-radius: var(--radius-control);
+  --workspace-column-gap: 16px;
+  --workspace-row-gap: 12px;
+  --workspace-group-gap: 9px;
+  --workspace-side-inset: 10px;
+  --workspace-outer-space: 48px;
+
+  /* Typography and shape */
+  --font-ui: 'DM Sans', sans-serif;
+  --font-heading: 'DM Sans', sans-serif;
+  --font-mono: 'DM Mono', monospace;
+  --radius-small: 5px;
+  --radius-control: 6px;
+  --radius-button: 7px;
+  --radius-card: 8px;
+  --radius-mark: 9px;
+  --radius-section: 10px;
+  --radius-panel: 11px;
+  --radius-panel-large: 12px;
+  --radius-tight: 4px;
+  --radius-micro: 3px;
+  --text-field-height: 24px;
+  --text-field-padding-inline: 5px;
+  --text-field-font-size: 10px;
+  --knob-default-brightness: .75;
+
+  /* Main theme defaults derived by core/ui/theme.ts; preferences apply the same palette. */
+  --surface-canvas: #080e16;
+  --surface-input: #0a1827;
+  --surface-base: #0b1e30;
+  --surface-app-heading: #1a2c3c;
+  --surface-low: #142a3e;
+  --surface-inspector: #0b1e30;
+  --surface-transport-dock: #0b1e30;
+  --surface-role-group: #112d45;
+  --surface-role-group-selected: #0e2437;
+  --surface-card: #1c354b;
+  --surface-button: #14495d;
+  --surface-button-hover: #195f75;
+  --surface-hover: #134357;
+  --surface-accent: #113a4d;
+  --surface-accent-hover: #154c61;
+  --surface-toggle-active: color-mix(in srgb, var(--surface-accent-hover) 50%, var(--surface-base));
+  --toggle-off-shade: color-mix(in srgb, var(--surface-base) 25%, transparent);
+  --surface-score: #0a1826;
+  --surface-blue: #103448;
+  --surface-violet: #27344c;
+  --surface-warm: #323939;
+  --surface-danger: #323345;
+  --surface-glass: #0b1e30f5;
+
+  /* Theme background gradients */
+  --background-page: linear-gradient(to bottom, var(--surface-canvas), color-mix(in srgb, var(--surface-canvas), white 5%));
+  --background-role-group: linear-gradient(to bottom, var(--surface-role-group), color-mix(in srgb, var(--surface-role-group), var(--surface-base) 35%));
+
+  /* Mixer status, distinct from role colors */
+  --mix-mute-active: #ffff32;
+  --mix-solo-active: #91ff28;
+  --mix-track-mute-active: color-mix(in srgb, var(--mix-mute-active) 75%, var(--surface-base));
+  --mix-track-solo-active: color-mix(in srgb, var(--mix-solo-active) 75%, var(--surface-base));
+
+  /* Chordlet palette shared by editors and harmony headers */
+  --chordlet-border-tone: 45% 38%;
+  --chordlet-background-tone: 50% 28%;
+  --chordlet-background-mix: 60%;
+  --chordlet-foreground-tone: 70% 84%;
+
+  /* Main generation actions */
+  --compose-accent: #f2b544;
+  --regenerate-accent: #3fc6a4;
+  --generation-symbol-color: #102a2a;
+
+  /* Settings scope indicators */
+  --settings-ui-indicator: var(--text-muted);
+  --settings-compose-indicator: var(--compose-accent);
+  --settings-sound-indicator: var(--accent-primary);
+
+  /* Playback loop markers */
+  --loop-accent: #ffe16a;
+  --loop-line: color-mix(in srgb, var(--loop-accent) 80%, var(--surface-base));
+  --loop-surface: color-mix(in srgb, var(--loop-accent) 12%, transparent);
+  --loop-outline: color-mix(in srgb, var(--loop-accent) 20%, transparent);
+
+  /* Text and borders */
+  --text-primary: #f2f7ff;
+  --text-strong: #dbe1ea;
+  --text-secondary: #b1bac5;
+  --text-muted: #8c98a4;
+  --text-subtle: #7a8693;
+  --text-faint: #677583;
+  --text-disabled: #505f6e;
+  --border-subtle: #193247;
+  --border-default: #2a4962;
+  --border-strong: #3b607d;
+  --border-contrast: #5c7b94;
+  --border-focus: #32d7f4;
+  --border-accent: #1f7b92;
+  --border-danger: #897993;
+  --border-blue: #397895;
+  --border-violet: #65779b;
+  --border-warm: #898976;
+  --border-grid: #28465e;
+  --grid-subdivision: #12283c;
+  --grid-step: #0f2336;
+  --grid-eighth: #193247;
+  --grid-beat: #31536e;
+  --grid-measure: #607e97;
+  --score-row-odd: #0a1b2b;
+  --score-row-even: #0b1e30;
+  --score-pitch-a: #0a1a2a;
+  --score-pitch-b: #0b1c2d;
+  --score-pitch-band: #3b607d0d;
+  --score-octave-line: #aaaaaa;
+  --score-out-of-scale: #0a1826;
+  --score-in-scale: #223445;
+  --score-scale-note: rgb(140 235 194 / 22%);
+
+  /* Accent and arrangement roles */
+  --accent-primary: #32d7f4;
+  --accent-hover: #7fe4f8;
+  --accent-shadow: #32d7f426;
+  --accent-glow: #32d7f480;
+  --accent-outline: #32d7f42e;
+  --role-melody: #d44040;
+  --role-melody-glow: color-mix(in srgb, var(--role-melody), transparent 69%);
+  --role-melody-strong: color-mix(in srgb, var(--role-melody), var(--text-primary) 22%);
+  --role-melody-dark: color-mix(in srgb, var(--role-melody), var(--surface-base) 40%);
+  --role-melody-surface: color-mix(in srgb, var(--role-melody), var(--surface-base) 72%);
+  --role-melody-border: color-mix(in srgb, var(--role-melody), var(--surface-base) 32%);
+  --role-melody-text: color-mix(in srgb, var(--role-melody), var(--text-primary) 78%);
+  --role-melody-header: color-mix(in srgb, var(--role-melody), var(--surface-base) 55%);
+  --role-bass: #8ca9ba;
+  --role-bass-glow: color-mix(in srgb, var(--role-bass), transparent 69%);
+  --role-bass-strong: color-mix(in srgb, var(--role-bass), var(--text-primary) 22%);
+  --role-bass-dark: color-mix(in srgb, var(--role-bass), var(--surface-base) 40%);
+  --role-bass-surface: color-mix(in srgb, var(--role-bass), var(--surface-base) 72%);
+  --role-bass-border: color-mix(in srgb, var(--role-bass), var(--surface-base) 32%);
+  --role-bass-text: color-mix(in srgb, var(--role-bass), var(--text-primary) 78%);
+  --role-chords: #28b82b;
+  --role-chords-glow: color-mix(in srgb, var(--role-chords), transparent 69%);
+  --role-chords-strong: color-mix(in srgb, var(--role-chords), var(--text-primary) 22%);
+  --role-chords-dark: color-mix(in srgb, var(--role-chords), var(--surface-base) 40%);
+  --role-chords-surface: color-mix(in srgb, var(--role-chords), var(--surface-base) 72%);
+  --role-chords-border: color-mix(in srgb, var(--role-chords), var(--surface-base) 32%);
+  --role-chords-text: color-mix(in srgb, var(--role-chords), var(--text-primary) 78%);
+  --role-arpeggio: #ed55bf;
+  --role-arpeggio-glow: color-mix(in srgb, var(--role-arpeggio), transparent 69%);
+  --role-arpeggio-strong: color-mix(in srgb, var(--role-arpeggio), var(--text-primary) 22%);
+  --role-arpeggio-dark: color-mix(in srgb, var(--role-arpeggio), var(--surface-base) 40%);
+  --role-arpeggio-surface: color-mix(in srgb, var(--role-arpeggio), var(--surface-base) 72%);
+  --role-arpeggio-border: color-mix(in srgb, var(--role-arpeggio), var(--surface-base) 32%);
+  --role-arpeggio-text: color-mix(in srgb, var(--role-arpeggio), var(--text-primary) 78%);
+  --role-bass-header: color-mix(in srgb, var(--role-bass), var(--surface-base) 55%);
+  --role-chords-header: color-mix(in srgb, var(--role-chords), var(--surface-base) 55%);
+  --role-arpeggio-header: color-mix(in srgb, var(--role-arpeggio), var(--surface-base) 55%);
+  --role-drums-header: color-mix(in srgb, var(--role-drums), var(--surface-base) 55%);
+  --role-drums: #e4b74e;
+  --role-drums-glow: color-mix(in srgb, var(--role-drums), transparent 69%);
+  --role-drums-strong: color-mix(in srgb, var(--role-drums), var(--text-primary) 22%);
+  --role-drums-dark: color-mix(in srgb, var(--role-drums), var(--surface-base) 40%);
+  --role-drums-surface: color-mix(in srgb, var(--role-drums), var(--surface-base) 72%);
+  --role-drums-border: color-mix(in srgb, var(--role-drums), var(--surface-base) 32%);
+  --role-kick: var(--role-drums);
+  --role-kick-glow: var(--role-drums-glow);
+  --role-kick-dark: var(--role-drums-dark);
+  --role-snare: var(--role-drums-strong);
+  --role-snare-glow: var(--role-drums-glow);
+  --role-hat: color-mix(in srgb, var(--role-drums), var(--text-primary) 65%);
+  --role-drum-surface: var(--role-drums-surface);
+  --role-drum-border: var(--role-drums-border);
+
+  /* Arrangement presence backgrounds */
+  --role-melody-cell-surface: color-mix(in srgb, var(--role-melody), var(--surface-canvas) 80%);
+  --role-bass-cell-surface: color-mix(in srgb, var(--role-bass), var(--surface-canvas) 80%);
+  --role-chords-cell-surface: color-mix(in srgb, var(--role-chords), var(--surface-canvas) 80%);
+  --role-arpeggio-cell-surface: color-mix(in srgb, var(--role-arpeggio), var(--surface-canvas) 80%);
+  --role-drum-cell-surface: color-mix(in srgb, var(--role-drums), var(--surface-canvas) 80%);
+  --role-melody-cell-empty: color-mix(in srgb, var(--role-melody), var(--surface-canvas) 90%);
+  --role-bass-cell-empty: color-mix(in srgb, var(--role-bass), var(--surface-canvas) 90%);
+  --role-chords-cell-empty: color-mix(in srgb, var(--role-chords), var(--surface-canvas) 90%);
+  --role-arpeggio-cell-empty: color-mix(in srgb, var(--role-arpeggio), var(--surface-canvas) 90%);
+  --role-drum-cell-empty: color-mix(in srgb, var(--role-drums), var(--surface-canvas) 90%);
+
+  /* Mid-brightness parameter hues need only a soft blend toward theme text. */
+  --parameter-timing: color-mix(in srgb, #70839c 70%, var(--text-primary));
+  --parameter-rhythm: color-mix(in srgb, #418c91 70%, var(--text-primary));
+  --parameter-pitch: color-mix(in srgb, #7e70a6 70%, var(--text-primary));
+  --parameter-shape: color-mix(in srgb, #a47659 70%, var(--text-primary));
+  --parameter-dynamics: color-mix(in srgb, #858f50 70%, var(--text-primary));
+  --parameter-structure: color-mix(in srgb, #5b819d 70%, var(--text-primary));
+  --parameter-other: color-mix(in srgb, #6a7b8c 70%, var(--text-primary));
+
+  /* Feedback and shadows */
+  --color-danger: #ff9fb5;
+  --color-danger-bright: #ffb8c8;
+  --color-warning: #ffc66b;
+  --shadow-ink: #0009;
+  --shadow-highlight: #ffffff08;
+  --ambient-glow: #32d7f40a;
+
+  /* Backwards-compatible theme aliases */
+  --muted: var(--text-muted);
+  --accent: var(--accent-primary);
+  --line: var(--border-subtle);
+}
+
+/* Inspector gradient resolves the selected role in its local scope, then transitions to the dock/base color. */
+:root, [data-control-role] {
+  --background-inspector: linear-gradient(150deg,
+    color-mix(in srgb, var(--surface-inspector), var(--control-role-color, var(--surface-inspector)) 30%) 0%,
+    color-mix(in srgb, var(--surface-inspector), var(--control-role-color, var(--surface-inspector)) 5%) 10%,
+    var(--surface-inspector) 40%,
+    var(--surface-transport-dock) 75%);
+}
+
+/* Contextual role accents */
+[data-control-role="melody"] { --control-role-color: var(--role-melody); }
+[data-control-role="bass"] { --control-role-color: var(--role-bass); }
+[data-control-role="chords"] { --control-role-color: var(--role-chords); }
+[data-control-role="arpeggio"] { --control-role-color: var(--role-arpeggio); }
+[data-control-role="drums"] { --control-role-color: var(--role-drums); }
+[data-control-role], [data-control-category] {
+  --accent-primary: var(--control-role-color);
+  --accent: var(--accent-primary);
+  --accent-hover: color-mix(in srgb, var(--control-role-color) 75%, var(--text-primary));
+  --accent-outline: color-mix(in srgb, var(--control-role-color) 18%, transparent);
+  --accent-shadow: color-mix(in srgb, var(--control-role-color) 15%, transparent);
+  --accent-glow: color-mix(in srgb, var(--control-role-color) 50%, transparent);
+  --border-focus: var(--control-role-color);
+}
+
+/* Parameter accents override the enclosing role inside each musical area */
+[data-control-category="timing"] { --control-role-color: var(--parameter-timing); }
+[data-control-category="rhythm"] { --control-role-color: var(--parameter-rhythm); }
+[data-control-category="pitch"] { --control-role-color: var(--parameter-pitch); }
+[data-control-category="shape"] { --control-role-color: var(--parameter-shape); }
+[data-control-category="dynamics"] { --control-role-color: var(--parameter-dynamics); }
+[data-control-category="structure"] { --control-role-color: var(--parameter-structure); }
+[data-control-category="other"] { --control-role-color: var(--parameter-other); }
+[data-control-category] {
+  --parameter-surface: color-mix(in srgb, var(--control-role-color) 9%, var(--surface-base));
+  --border-subtle: color-mix(in srgb, var(--control-role-color) 15%, var(--surface-base));
+  --border-default: color-mix(in srgb, var(--control-role-color) 30%, var(--surface-base));
+  --surface-input: color-mix(in srgb, var(--control-role-color) 6%, var(--surface-base));
+  --surface-low: color-mix(in srgb, var(--control-role-color) 14%, var(--surface-base));
+}
+
+/* Base element styles */
+* { box-sizing: border-box; scrollbar-width: thin; scrollbar-color: var(--border-strong) var(--surface-canvas); }
+*::-webkit-scrollbar { width: 10px; height: 10px; }
+*::-webkit-scrollbar-track { border: 2px solid var(--surface-canvas); border-radius: 999px; background: var(--surface-low); }
+*::-webkit-scrollbar-thumb { border: 2px solid var(--surface-canvas); border-radius: 999px; background: var(--border-strong); }
+*::-webkit-scrollbar-thumb:hover { background: var(--accent-primary); }
+*::-webkit-scrollbar-corner { background: var(--surface-canvas); }
+*::-webkit-scrollbar-button { width: 0; height: 0; display: none; }
+
+/* Contain the frame's top margin instead of adding it outside the viewport-height root. */
+vc-root { min-height: 100vh; display: flow-root; }
+vc-workspace-canvas { min-height: 0; flex: 1 1 auto; display: flex; flex-direction: column; }
+
+body {
+  min-width: 360px;
+  min-height: 100vh;
+  margin: 0;
+  background: var(--surface-canvas) var(--background-page);
+}
+
+:where(button, a, input, select, textarea) { font: inherit; }
+
+/* Off-state toggle backgrounds; track, role, and score section selectors select a scope rather than toggle a setting. */
+button[aria-pressed="false"]:not(.group-select, .track-select, .score-ruler-section) {
+  /* Keep the shade over component background shorthands, including hover, without dimming labels. */
+  background-image: linear-gradient(var(--toggle-off-shade), var(--toggle-off-shade)) !important;
+}
+
+/* Heading typography */
+:where(h1, h2, h3, h4, h5, h6), .group-heading { font-family: var(--font-heading); }
+
+/* Compact text fields */
+:where(input[type="text"], input:not([type]), textarea) {
+  min-width: 0;
+  max-width: 100%;
+  height: var(--text-field-height);
+  padding: 0 var(--text-field-padding-inline);
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-control);
+  background: var(--surface-input);
+  color: var(--text-strong);
+  font: var(--text-field-font-size) var(--font-mono);
+}
+:where(input[type="text"], input:not([type]), textarea):hover:not(:disabled) { border-color: var(--border-strong); }
+:where(input[type="text"], input:not([type]), textarea):focus-visible { outline: 2px solid var(--border-focus); outline-offset: 1px; }
+:where(input[type="text"], input:not([type]), textarea)::placeholder { color: var(--text-subtle); opacity: 1; }
+:where(input[type="text"], input:not([type]), textarea):disabled { color: var(--text-disabled); cursor: default; }
+
+/* Application frame and branding */
+.app-frame { width: min(100% - var(--workspace-outer-space), var(--workspace-max-width)); height: calc(100vh - var(--workspace-edge-space)); min-height: 0; margin: var(--workspace-edge-space) auto 0; padding-bottom: calc(var(--transport-height, 64px) + var(--workspace-edge-space)); display: flex; flex-direction: column; }
+.brand { display: inline-flex; flex: 0 0 auto; align-items: center; gap: 10px; color: var(--text-primary); text-decoration: none; font-size: 14px; font-weight: 700; letter-spacing: -.04em; }
+.brand-mark { width: 28px; height: 28px; display: grid; place-items: center; border-radius: var(--radius-card); background: var(--accent-primary); color: var(--surface-canvas); font-size: 16px; }
+.brand-light { color: var(--text-secondary); font-weight: 500; }
+
+/* Project actions in the transport dock */
+.project-tools { display: flex; align-items: center; gap: 10px; }
+.project-tool-group { display: grid; align-items: center; gap: 4px 6px; }
+.project-tools button { height: 22px; padding: 0 10px; border: 1px solid var(--border-strong); border-radius: var(--radius-control); background: var(--surface-button); color: var(--text-primary); cursor: pointer; font-size: 10px; white-space: nowrap; }
+.project-tools .icon-button { width: 31px; padding: 0; font-size: 16px; }
+.project-device-tools, .project-file-tools { grid-template-columns: minmax(0, 1fr); }
+.project-history-group { grid-template-columns: repeat(2, 31px); }
+.project-history-group button:last-child { grid-column: 1 / -1; width: 100%; }
+.project-tools button:hover:not(:disabled) { border-color: var(--accent-primary); background: var(--surface-button-hover); }
+.project-tools button:focus-visible { outline: 2px solid var(--border-focus); outline-offset: 2px; }
+.project-tools button:disabled { opacity: .35; cursor: default; }
+.project-message { display: flex; align-items: center; gap: 10px; position: absolute; z-index: 2; right: 12px; bottom: calc(100% + 6px); max-width: calc(100% - 24px); margin: 0; padding: 7px 10px; border: 1px solid var(--border-accent); border-radius: var(--radius-control); background: var(--surface-accent); color: var(--accent-primary); font-size: 10px; }
+
+/* Dismissible project notifications */
+.project-message button { flex: 0 0 auto; width: 24px; height: 24px; padding: 0; border: 1px solid var(--border-accent); border-radius: var(--radius-control); background: var(--surface-button); color: var(--text-primary); font-size: 16px; cursor: pointer; }
+.project-message button:hover { background: var(--surface-button-hover); }
+.project-message button:focus-visible { outline: 2px solid var(--border-focus); outline-offset: 2px; }
+
+/* Tablet layout */
+@media (max-width: 900px) {
+  .app-frame { width: min(100% - min(40px, var(--workspace-outer-space)), var(--workspace-max-width)); height: auto; min-height: calc(100vh - var(--workspace-edge-space)); }
+  vc-workspace-canvas { flex: 0 0 auto; }
+}
+
+@media (max-width: 1050px) {
+  .app-frame { height: auto; min-height: calc(100vh - var(--workspace-edge-space)); }
+  vc-workspace-canvas { flex: 0 0 auto; }
+}
+
+/* Mobile layout */
+@media (max-width: 520px) {
+  .app-frame { width: min(100% - 28px, var(--workspace-max-width)); }
+  .brand { font-size: 12px; }
+}

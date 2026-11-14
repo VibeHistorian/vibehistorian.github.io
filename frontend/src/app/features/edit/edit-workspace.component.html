@@ -1,0 +1,58 @@
+<ng-template #inspector>
+  @if (applyError(); as error) { <p class="inspector-copy" role="alert">{{ error }}</p> }
+      <div class="inspector-heading">
+        <h2 id="inspector-title"><span class="edit-mark" aria-hidden="true">{{ isEdited() ? '✎' : '♪' }}</span>{{ selectedPart() | titlecase }} notes</h2>
+        <p class="eyebrow">{{ isEdited() ? 'CUSTOM PHRASE' : 'SEEDED PHRASE' }}</p>
+      </div>
+
+      @if (selectedNote(); as note) {
+        <p class="inspector-copy">{{ selectedNoteIds().length }} {{ selectedNoteIds().length === 1 ? 'note' : 'notes' }} selected</p>
+        <p class="selected-note-name">{{ noteName(note.midi) }} <span>NOTE SELECTED</span></p>
+        <label class="field-label" for="note-pitch">Pitch</label>
+        <div class="field-with-value">
+          <input id="note-pitch" type="number" min="0" max="127" step="1" [value]="note.midi" (change)="updateSelected('midi', $event)" />
+          <output>{{ noteName(note.midi) }}</output>
+        </div>
+        <label class="field-label" for="note-start">Start beat</label>
+        <input id="note-start" class="number-input" type="number" [min]="editBounds().startBeat + 1" [max]="editBounds().endBeat - note.durationBeats + 1" step="0.25" [value]="note.startBeat + 1" (change)="updateSelected('startBeat', $event)" />
+        <label class="field-label" for="note-length">Length in beats</label>
+        <input id="note-length" class="number-input" type="number" min="0.05" [max]="editBounds().endBeat - note.startBeat" step="0.25" [value]="note.durationBeats" (change)="updateSelected('durationBeats', $event)" />
+        <label class="field-label" for="note-velocity">Velocity</label>
+        <div class="velocity-control">
+          <input id="note-velocity" type="range" min="1" max="127" step="1" [value]="note.velocity" (change)="updateSelected('velocity', $event)" />
+          <output>{{ note.velocity }}</output>
+        </div>
+        <button type="button" class="remove-note" (click)="deleteSelected()">Remove selected notes</button>
+      } @else {
+        <p class="inspector-copy">Select a note in the piano roll to edit its properties. Applying saves this phrase as one undo step.</p>
+      }
+
+      @if (isEdited()) {
+        <div class="restore-panel">
+          <p>{{ generationAvailable() ? 'This part includes your saved note edits.' : 'This track uses your saved melody notes.' }}</p>
+          @if (generationAvailable()) { <button type="button" class="secondary-button" (click)="restoreGenerated()">Restore generated phrase</button> }
+        </div>
+      } @else {
+        <div class="source-panel"><span class="status-dot"></span> {{ generationAvailable() ? 'Following current seed and generation settings' : 'Add melody notes here. Automatic generation is not available yet.' }}</div>
+      }
+
+  <div class="phrase-tools">
+    <label class="field-label" for="phrase-grid">Time grid (beats)</label>
+    <vc-select [options]="gridSelectOptions()" id="phrase-grid" [value]="snapBeats()" (valueChange)="setGrid($event)"></vc-select>
+    <div class="phrase-actions">
+      <button type="button" title="Shortcuts: Settings > Shortcuts" (click)="selectAll()">Select all</button>
+      <button type="button" title="Shortcuts: Settings > Shortcuts" (click)="openTranspose()" [disabled]="!selectedNoteIds().length">Transpose…</button>
+    </div>
+    @if (transposeOpen()) {
+      <label class="field-label" for="phrase-transpose">Transpose selected notes (semitones)</label>
+      <input id="phrase-transpose" type="number" step="1" [value]="transposeAmount()" (input)="setTranspose($event)" (keydown.enter)="transposeSelected()" (keydown.escape)="transposeOpen.set(false)" />
+      <button type="button" (click)="transposeSelected()" [disabled]="!selectedNoteIds().length">Transpose</button>
+    }
+  </div>
+  <details class="phrase-help">
+    <summary>Editing gestures and shortcuts</summary>
+    <p>Apply replaces this beat range globally. Each section keeps its notes outside the range; shorter sections use only the overlap. Local Apply saves to this section only.</p>
+    <p>View and customize editing gestures, playback and keyboard actions in Settings > Shortcuts. Drag note edges to trim; use the time-grid modifier to bypass snapping and keep move drags at the same pitch. Arrow keys focus notes; Enter selects.</p>
+    <p>Snap to scale/key constrains pitch edits and highlights notes and rows in the current scale. Toggle it off for chromatic editing. Existing notes remain unchanged when toggling.</p>
+  </details>
+</ng-template>

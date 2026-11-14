@@ -1,0 +1,195 @@
+import { MenuSelectComponent } from '../../shared/menu-select.component';
+import { SCALE_MENU_GROUPS } from '../harmony/scale-menu-groups';
+import { elapsedTime } from '../../core/ui/musical-time';
+import { resolveProjectTimeline } from '../../core/music/project-timeline';
+import { InstrumentSettingsService } from '../../core/audio/instrument-settings.service';
+import { isScaleMode } from '../../core/music/scales';
+import { SCALE_MODES, SCALE_DEFINITIONS } from '../../core/music/scales';
+import { afterNextRender, Injector, ChangeDetectionStrategy, Component, computed, effect, inject, untracked, signal } from '@angular/core';
+import { AudioPlaybackService } from '../../core/audio/audio-playback.service';
+import { ProjectService } from '../../core/project/project.service';
+import { UiPreferencesService } from '../../core/ui/ui-preferences.service';
+import { WorkspaceUiService } from '../../core/ui/workspace-ui.service';
+import { effectiveKey } from '../../core/music/harmony';
+import { MixButtonsComponent } from '../tracks/mix-buttons.component';
+import { CompactKnobComponent } from '../../shared/compact-knob.component';
+import { ChordletEditorComponent } from '../harmony/chordlet-editor.component';
+
+@Component({
+  selector: 'vc-transport-dock',
+  imports: [MenuSelectComponent, MixButtonsComponent, CompactKnobComponent, ChordletEditorComponent],
+  changeDetection: ChangeDetectionStrategy.OnPush,
+  templateUrl: './transport-dock.component.html',
+  styleUrl: './transport-dock.component.css',
+})
+export class TransportDockComponent {
+  readonly scaleMenuGroups = SCALE_MENU_GROUPS;
+  readonly scaleOptions = computed(() => this.scales.map(scale => ({ value: scale, label: this.scaleDefinitions[scale].label })));
+
+  readonly scales = SCALE_MODES;
+  readonly scaleDefinitions = SCALE_DEFINITIONS;
+  readonly instruments = inject(InstrumentSettingsService);
+  readonly instrumentOptions = computed(() => this.instruments.options());
+  readonly instrumentMenuGroups = computed(() => [{ id: 'soundfonts', label: 'Soundfonts', values: this.instruments.loaded().map(bank => bank.id) }]);
+  readonly instrumentActions = computed(() => [{ id: 'load-soundfont', label: 'Load soundfont…', disabled: this.instruments.busy() }]);
+  readonly instrumentLabel = computed(() => this.instrumentOptions().find(option => option.value === this.instruments.kind())?.label ?? 'Audio instrument engine');
+  selectInstrument(value: string): void {
+    this.playback.stop();
+    this.instruments.select(value);
+  }
+  instrumentAction(id: string, input: HTMLInputElement): void {
+    if (id === 'load-soundfont' && !this.instruments.busy()) input.click();
+  }
+  async loadSoundfont(event: Event): Promise<void> {
+    const input = event.target as HTMLInputElement;
+    const file = input.files?.[0];
+    input.value = '';
+    if (file) await this.instruments.load(file);
+  }
+  readonly playback = inject(AudioPlaybackService);
+  private readonly projects = inject(ProjectService);
+  readonly workspaceUi = inject(WorkspaceUiService);
+  readonly project = this.projects.project;
+  readonly seedInput = this.projects.seedInput;
+  private readonly preferences = inject(UiPreferencesService);
+  private readonly injector = inject(Injector);
+
+  toggleComposeRandomization(field: 'randomizeTempoOnCompose' | 'randomizeTransposeOnCompose' | 'randomizeHarmonyOnCompose'): void {
+    this.projects.updateSettings({ [field]: this.project()[field] === false });
+  }
+  readonly key = computed(() => effectiveKey(this.project().key, this.project().transposeSemitones ?? 0));
+  private readonly generationFeedback = signal<{ project: unknown; message: string } | null>(null);
+  readonly generationMessage = computed(() => this.generationFeedback()?.project === this.project() ? this.generationFeedback()?.message : null);
+
+  generate(): void {
+    const started = performance.now();
+    const result = this.projects.generateComposition();
+    if (result !== 'invalid') {
+      if (this.project().arrangementPreview) {
+        const sectionId = this.playback.previewArrangement(this.project());
+        if (sectionId && this.playback.loopEnabled()) this.workspaceUi.setSectionSelection(sectionId, true);
+      }
+      else if (this.preferences.restartPlaybackOnCompose()) this.playback.restartAfterCompose(this.project());
+    }
+    this.generationFeedback.set(result === 'changed' ? null : { project: this.project(), message: result === 'invalid'
+      ? `Compose cancelled. ${this.projects.generationError() ?? 'Generation conflicts with local settings.'} Previous arrangement kept.`
+      : 'Settings already match the generation rules.' });
+    // Include Angular's update, canvas drawing and the browser's next paint.
+    afterNextRender(() => requestAnimationFrame(() => setTimeout(() => {
+      console.log(`[Compose] ${(performance.now() - started).toFixed(1)} ms`);
+    }, 0)), { injector: this.injector });
+  }
+  readonly trackIds = computed(() => this.project().tracks.map(track => track.id));
+  private readonly liveReloadEffect = effect(() => {
+    const project = this.project();
+    const live = this.playback.liveEnabled();
+    // Playback ticks must not trigger regeneration or subscribe this effect to position/state.
+    if (live) untracked(() => this.playback.reload(project));
+  });
+  private readonly loopRangeEffect = effect(() => {
+    const range = this.workspaceUi.sectionRange();
+    untracked(() => this.playback.setLoopRange(range));
+  });
+  private readonly projectTimeline = computed(() => resolveProjectTimeline(this.project()));
+  readonly timeline = computed(() => this.playback.state() === 'stopped'
+    ? this.projectTimeline() : this.playback.timeline() ?? this.projectTimeline());
+  readonly totalBeats = computed(() => this.timeline().arrangementBounds.endBeat);
+  readonly timelineBounds = computed(() => this.timeline().soundingBounds);
+  private readonly timelineBeats = computed(() => this.timelineBounds().endBeat - this.timelineBounds().startBeat);
+  readonly loopRegion = computed(() => {
+    const duration = this.timelineBeats();
+    if (!this.playback.loopEnabled() || duration <= 0) return null;
+    const range = this.workspaceUi.sectionRange() ?? this.timelineBounds();
+    return { left: (range.startBeat - this.timelineBounds().startBeat) / duration * 100, width: (range.endBeat - range.startBeat) / duration * 100 };
+  });
+
+  seek(event: MouseEvent): void {
+    const bounds = (event.currentTarget as HTMLElement).getBoundingClientRect();
+    if (bounds.width <= 0) return;
+    const fraction = Math.max(0, Math.min(1, (event.clientX - bounds.left) / bounds.width));
+    this.playback.seek(this.project(), this.timelineBounds().startBeat + fraction * this.timelineBeats());
+  }
+
+  seekKey(event: KeyboardEvent): void {
+    const bounds = this.timelineBounds();
+    const beat = event.key === 'Home' ? bounds.startBeat : event.key === 'End' ? bounds.endBeat
+      : event.key === 'ArrowLeft' ? this.playback.beat() - 1 : event.key === 'ArrowRight' ? this.playback.beat() + 1 : null;
+    if (beat === null) return;
+    event.preventDefault();
+    this.playback.seek(this.project(), beat);
+  }
+  readonly progressPercent = computed(() => {
+    const duration = this.timelineBeats();
+    return duration > 0 ? Math.max(0, Math.min(100, (this.playback.beat() - this.timelineBounds().startBeat) / duration * 100)) : 0;
+  });
+  readonly positionText = computed(() => {
+    const beat = this.playback.beat();
+
+    const measure = Math.floor(beat / 4) + 1;
+    const beatInMeasure = Math.floor((beat % 4 + 4) % 4) + 1;
+    return `${String(measure).padStart(2, '0')}.${String(beatInMeasure).padStart(2, '0')}`;
+  });
+
+  readonly currentTimeText = computed(() => elapsedTime(this.timeline().elapsedSeconds(this.playback.beat())));
+  readonly durationText = computed(() => elapsedTime(this.timeline().durationSeconds));
+
+  togglePlayback(): void {
+    void this.playback.toggle(this.project());
+  }
+
+  stop(): void {
+    this.playback.stop();
+  }
+
+  toggleLoop(): void {
+    this.playback.toggleLoop();
+  }
+
+  toggleLive(): void {
+    this.playback.toggleLive();
+  }
+
+  updateScale(selection: string): void {
+    const scale = selection;
+    if (isScaleMode(scale)) this.projects.updateSettings({ scale });
+  }
+
+  updateTempo(tempo: number): void {
+    if (Number.isInteger(tempo) && tempo >= 30 && tempo <= 240) this.projects.updateSettings({ tempoBpm: tempo });
+  }
+
+  updateTranspose(transpose: number): void {
+    if (Number.isInteger(transpose) && transpose >= -24 && transpose <= 24) this.projects.updateSettings({ transposeSemitones: transpose });
+  }
+
+  updateSpiciness(spiciness: number): void {
+    this.projects.updateHarmonySettings({ spiciness });
+  }
+  resetSeed(event: MouseEvent): void {
+    event.preventDefault();
+    event.stopPropagation();
+    this.projects.updateSettings({ seed: '0' });
+    (event.target as HTMLInputElement).value = this.seedInput();
+  }
+
+  seedMouseDown(event: MouseEvent): void {
+    if (event.button === 1) event.preventDefault();
+  }
+
+  randomizeSeed(event: MouseEvent): void {
+    if (event.button !== 1) return;
+    event.preventDefault();
+    event.stopPropagation();
+    this.projects.randomizeSeed();
+    (event.target as HTMLInputElement).value = this.seedInput();
+  }
+
+  updateSeed(event: Event): void {
+    const input = event.target as HTMLInputElement, seed = input.value.trim();
+    if (/^-?\d+$/.test(seed)) {
+      const value = BigInt(seed);
+      if (value >= -(1n << 63n) && value <= (1n << 63n) - 1n) this.projects.updateSettings({ seed: value.toString() });
+    }
+    input.value = this.seedInput();
+  }
+}

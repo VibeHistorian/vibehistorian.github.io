@@ -1,0 +1,217 @@
+import { SCORE_NOTE_SHAPES } from '../../core/ui/ui-preferences';
+import { MIDI_PPQ_CHOICES } from '../../core/music/midi-resolution';
+import { version } from '../../../../package.json';
+import { CdkDrag, CdkDragHandle } from '@angular/cdk/drag-drop';
+import { VARIATION_DEFINITIONS, variationStrength } from '../../core/music/arrangement-variation-catalogue';
+import { VARIATION_ROWS } from '../../core/ui/variation-reroll-preferences';
+import { InstrumentSettingsService } from '../../core/audio/instrument-settings.service';
+import { fixedMouseButton, shortcutsConflict, acceptsShortcut, SHORTCUTS, SHORTCUT_PAGES, shortcutFromEvent, shortcutLabel, type ShortcutId } from '../../core/ui/shortcuts';
+import { SettingsScopeIndicatorComponent, type SettingScope } from './settings-scope-indicator.component';
+import { SelectComponent } from '../../shared/select.component';
+import { MelodyGlobalSettingsComponent } from './melody-global-settings.component';
+import { UiPreferencesService } from '../../core/ui/ui-preferences.service';
+import { ChangeDetectionStrategy, Component, computed, DestroyRef, effect, inject, signal } from '@angular/core';
+import { EXPORT_NAME_FIELDS, exportFilename } from '../../core/project/export-filename';
+import { downloadProjectFile } from '../../core/project/download-file';
+import { DialogRef } from '@angular/cdk/dialog';
+import { ProjectService } from '../../core/project/project.service';
+import { SectionTypeSettingsComponent } from '../section-types/section-type-settings.component';
+import { COLOR_ADJUSTMENTS, FONT_AREAS, FONT_CHOICES, PANEL_LAYOUT_OPTIONS, WINDOW_WIDTH_OPTIONS, type FontArea } from '../../core/ui/appearance';
+import { CompactKnobComponent } from '../../shared/compact-knob.component';
+import { ARRANGED_PARTS, type ArrangedPart } from '../../core/music/part-role';
+import { THEME_COLORS, type ThemeColor } from '../../core/ui/theme';
+import { HARMONY_GENERATIONS } from '../../core/music/contextual-harmony';
+import { DEFAULT_HARMONY_SETTINGS, type HarmonySettings } from '../../core/music/harmony-voicing';
+import { MidiOutputService } from '../../core/audio/midi-output.service';
+import { MAX_DRUM_SOUNDS, type DrumMappingPreference } from '../../core/music/drum-instruments';
+
+@Component({
+  selector: 'vc-settings-dialog',
+  host: { '[class.explainers-as-tooltips]': 'preferences.preferences().settingsExplainersAsTooltips' },
+  imports: [CdkDrag, CdkDragHandle, SettingsScopeIndicatorComponent, SelectComponent, SectionTypeSettingsComponent, CompactKnobComponent, MelodyGlobalSettingsComponent],
+  changeDetection: ChangeDetectionStrategy.OnPush,
+  templateUrl: './settings-dialog.component.html',
+  styleUrls: ['./settings-dialog.component.css', './settings-rows.css'],
+})
+export class SettingsDialogComponent {
+  readonly appVersion = version;
+  readonly scoreNoteShapes = SCORE_NOTE_SHAPES;
+  readonly maxDrumSounds = MAX_DRUM_SOUNDS;
+  setHumanization(key: 'timingBeats' | 'durationBeats', value: number): void {
+    this.projects.updateSettings({ humanization: { timingBeats: 0, durationBeats: 0, ...this.projects.project().humanization, [key]: value } });
+  }
+  setPadding(role: ArrangedPart, value: number): void {
+    this.projects.updateSettings({ midiPadding: { ...this.projects.project().midiPadding, [role]: value } });
+  }
+  readonly variationGroups = [
+    { id: 'shared', label: 'Shared' }, { id: 'melody', label: 'Melody' },
+    { id: 'chords', label: 'Chords' }, { id: 'arpeggio', label: 'Arps' }, { id: 'bass', label: 'Bass' }, { id: 'drums', label: 'Drums' },
+  ].map(group => ({ ...group, rows: VARIATION_ROWS.filter(row => {
+    const roles = VARIATION_DEFINITIONS[row.kind].roles;
+    return group.id === 'shared' ? roles.length > 1 : roles.length === 1 && roles[0] === group.id;
+  }).map(row => ({ ...row, strengths: (row.kind === 'accompaniment-velocity-ramp' ? [1, -1] as const : [1] as const).flatMap(amount => {
+    const spec = variationStrength(row.kind, amount);
+    return spec ? [{ ...spec, falling: amount < 0,
+      label: row.kind === 'accompaniment-velocity-ramp' ? amount > 0 ? 'Rise points' : 'Fall points' : spec.label,
+      ariaLabel: row.kind === 'melody-speed' ? 'Melody speed variation delta' : `${row.label} ${amount < 0 ? 'fall ' : ''}strength` }] : [];
+  }) })) }));
+  readonly preferences = inject(UiPreferencesService);
+  readonly instruments = inject(InstrumentSettingsService);
+  async loadSoundfont(event: Event): Promise<void> {
+    const input = event.target as HTMLInputElement;
+    const file = input.files?.[0];
+    input.value = '';
+    if (file) await this.instruments.load(file);
+  }
+  readonly ppqOptions = MIDI_PPQ_CHOICES.map(value => ({ value: String(value), label: String(value) }));
+  readonly midi = inject(MidiOutputService);
+  changeDrumMapping(selection: string): void {
+    this.preferences.setDrumMapping(selection as DrumMappingPreference);
+  }
+  readonly transferMessage = signal('');
+  readonly dialog = inject(DialogRef);
+  readonly projects = inject(ProjectService);
+  readonly exportNameFields = EXPORT_NAME_FIELDS;
+  private readonly previewTime = signal(new Date());
+  readonly exportNamePreview = computed(() => exportFilename(this.projects.project(), this.preferences.exportNameFields(), this.previewTime()));
+  readonly fontAreas = FONT_AREAS;
+  readonly windowWidthOptions = WINDOW_WIDTH_OPTIONS;
+  readonly panelLayoutOptions = PANEL_LAYOUT_OPTIONS;
+  readonly fontChoices = FONT_CHOICES;
+  readonly roles = ARRANGED_PARTS;
+  readonly themeColors = THEME_COLORS;
+  readonly colorAdjustments = COLOR_ADJUSTMENTS;
+  readonly harmonyGenerations = HARMONY_GENERATIONS;
+  readonly harmonyValues = computed(() => ({ ...DEFAULT_HARMONY_SETTINGS, ...this.projects.project().harmonySettings }));
+  changeHarmony(selection: string): void {
+    this.projects.updateHarmonySettings({ generation: selection as HarmonySettings['generation'] });
+  }
+  changeThemeColor(key: ThemeColor, event: Event): void { this.preferences.setThemeColor(key, (event.target as HTMLInputElement).value); }
+  readonly roleNames: Record<ArrangedPart, string> = { melody: 'Melody', bass: 'Bass', chords: 'Chords', arpeggio: 'Arps', drums: 'Drums' };
+  changeFont(area: FontArea, selection: string): void { this.preferences.setFont(area, selection); }
+  changeRoleColor(role: ArrangedPart, event: Event): void { this.preferences.setRoleColor(role, (event.target as HTMLInputElement).value); }
+  exportPreferences(): void {
+    downloadProjectFile(new Blob([this.preferences.exportJson()], { type: 'application/json' }),
+      'vibecomposer-ui-preferences', 'json');
+    this.transferMessage.set('UI preferences exported.');
+  }
+  async importPreferences(event: Event, themeOnly = false): Promise<void> {
+    const input = event.target as HTMLInputElement;
+    const file = input.files?.[0];
+    if (!file) return;
+    try {
+      this.transferMessage.set((themeOnly ? this.preferences.importThemeJson(await file.text()) : this.preferences.importJson(await file.text()))
+        ? (themeOnly ? 'Theme imported.' : 'UI preferences imported.') : 'Invalid UI preferences file. Choose an exported UI preferences JSON.');
+    } catch { this.transferMessage.set('Could not read the UI preferences file.'); }
+    input.value = '';
+  }
+  readonly categories = [
+    { id: 'behavior', label: 'Behavior', children: [
+      { id: 'behavior', label: 'General' },
+      { id: 'harmony', label: 'Harmony' },
+      { id: 'arrangement', label: 'Arrangement' },
+      { id: 'variations', label: 'Variations' },
+      { id: 'melody', label: 'Melody' },
+      { id: 'section-types', label: 'Section Types' },
+    ] },
+    { id: 'appearance', label: 'Appearance', children: [
+      { id: 'appearance', label: 'General' },
+      { id: 'score', label: 'Score' },
+      { id: 'arrangement-appearance', label: 'Arrangement' },
+    ] },
+    { id: 'shortcuts', label: 'Shortcuts', children: SHORTCUT_PAGES.map(({ id, label }) => ({ id, label })) },
+    { id: 'midi', label: 'MIDI', children: [] },
+    { id: 'project', label: 'Project', children: [] },
+  ] as const;
+  readonly categoryScopes: Readonly<Record<string, readonly SettingScope[]>> = {
+    appearance: ['ui'], score: ['ui'], 'arrangement-appearance': ['ui'], behavior: ['ui', 'compose', 'sound'],
+    variations: ['compose'], harmony: ['ui', 'compose', 'sound'], arrangement: ['compose'], melody: ['compose', 'sound'], 'section-types': ['compose'],
+    ...Object.fromEntries(SHORTCUT_PAGES.map(page => [page.id, ['ui'] as const])), midi: ['ui', 'sound'], project: ['ui'],
+  };
+  readonly selectedCategory = signal<typeof this.categories[number]['id'] | typeof this.categories[number]['children'][number]['id']>('behavior');
+  readonly preview = signal(false);
+
+  private captureUntil = 0;
+  readonly shortcutPage = computed(() => {
+    const page = SHORTCUT_PAGES.find(page => page.id === this.selectedCategory());
+    return page ? { ...page, sections: page.groups.map(label => ({ label, actions: SHORTCUTS.filter(action => action.group === label) })) } : null;
+  });
+  readonly recording = signal<ShortcutId | null>(null);
+  readonly shortcutMessage = signal('');
+  readonly fixedMouseButton = fixedMouseButton;
+  fixedMouseText(id: ShortcutId): string { return ['Left Mouse', 'Middle Mouse', 'Right Mouse'][fixedMouseButton(id)!]; }
+  shortcutText(id: ShortcutId): string {
+    return this.preferences.shortcuts()[id].map(b => fixedMouseButton(id) === undefined ? shortcutLabel(b)
+      : shortcutLabel({ ...b, kind: 'modifier' }) || 'No modifiers').join(' or ') || 'Unassigned';
+  }
+  recordShortcut(id: ShortcutId): void {
+    this.recording.set(id);
+    this.preferences.capturingShortcut.set(true);
+    this.shortcutMessage.set(fixedMouseButton(id) !== undefined
+      ? 'Hold and release the desired modifiers. For no modifiers, click the fixed mouse button. Escape cancels.'
+      : SHORTCUTS.find(action => action.id === id)!.defaults[0].kind === 'modifier'
+      ? 'Hold and release the desired modifiers. Escape cancels.' : 'Press a key, click a mouse button or scroll, with optional Ctrl, Shift and Alt. Escape cancels.');
+  }
+  cancelRecording(): void {
+    this.recording.set(null);
+    this.preferences.capturingShortcut.set(false);
+  }
+  resetShortcuts(): void { this.cancelRecording(); this.preferences.resetShortcuts(); this.shortcutMessage.set('App defaults restored.'); }
+  private captureShortcut = (event: KeyboardEvent | MouseEvent | WheelEvent): void => {
+    const id = this.recording();
+    if (!id) return;
+    if ((event.target as HTMLElement)?.closest?.('[data-cancel-recording]')) return;
+    event.preventDefault(); event.stopImmediatePropagation();
+    if ('key' in event && event.key === 'Escape') { this.cancelRecording(); return; }
+    const action = SHORTCUTS.find(action => action.id === id)!;
+    const fixed = fixedMouseButton(id);
+    const modifierOnly = fixed !== undefined || action.defaults[0].kind === 'modifier';
+    if (modifierOnly && event.type !== 'keyup' && !(fixed !== undefined && event.type === 'pointerdown')) return;
+    if (!modifierOnly && event.type === 'keyup') return;
+    const captured = modifierOnly && 'key' in event && ['Control', 'Meta', 'Shift', 'Alt'].includes(event.key)
+      ? { kind: 'modifier' as const, input: 'held', ctrl: event.ctrlKey || event.metaKey || event.key === 'Control' || event.key === 'Meta',
+        shift: event.shiftKey || event.key === 'Shift', alt: event.altKey || event.key === 'Alt' } : shortcutFromEvent(event);
+    if (!captured || (fixed !== undefined && captured.kind === 'key')) return;
+    const binding = fixed === undefined ? captured : { ...captured, kind: 'mouse' as const, input: String(fixed) };
+    if (fixed !== undefined && captured.kind === 'mouse' && captured.input !== String(fixed)) {
+      this.shortcutMessage.set('Use ' + this.fixedMouseText(id) + ' or hold and release modifiers.'); return;
+    }
+    if (!acceptsShortcut(action, binding)) {
+      this.shortcutMessage.set(action.defaults[0].kind === 'wheel' ? 'Scroll the wheel with your desired modifiers.'
+        : action.defaults[0].kind === 'mouse' ? 'Click a mouse button with your desired modifiers.' : 'Use a key or mouse input supported by this action.');
+      return;
+    }
+    const conflict = SHORTCUTS.find(other => shortcutsConflict(id, other.id, this.preferences.shortcuts(), binding));
+    if (conflict) { this.shortcutMessage.set('Already used by ' + conflict.label + '. Clear or change that binding first.'); return; }
+    this.captureUntil = performance.now() + 500;
+    this.preferences.setShortcut(id, binding);
+    this.cancelRecording();
+    this.shortcutMessage.set(action.label + ': ' + shortcutLabel(binding));
+  };
+
+  constructor() {
+    const document = globalThis.document;
+    const capture = this.captureShortcut as EventListener;
+    for (const type of ['keydown', 'keyup', 'pointerdown', 'wheel']) document.addEventListener(type, capture, { capture: true, passive: false });
+    const suppress = (event: Event) => {
+      if ((event.target as HTMLElement)?.closest?.('[data-cancel-recording]')) return;
+      if (this.recording() || performance.now() < this.captureUntil) { event.preventDefault(); event.stopImmediatePropagation(); }
+    };
+    for (const type of ['click', 'auxclick', 'contextmenu']) document.addEventListener(type, suppress, true);
+    inject(DestroyRef).onDestroy(() => {
+      this.cancelRecording();
+      for (const type of ['keydown', 'keyup', 'pointerdown', 'wheel']) document.removeEventListener(type, capture, true);
+      for (const type of ['click', 'auxclick', 'contextmenu']) document.removeEventListener(type, suppress, true);
+    });
+    const timer = setInterval(() => this.previewTime.set(new Date()), 1000);
+    inject(DestroyRef).onDestroy(() => clearInterval(timer));
+    effect(() => {
+      this.preview.set(['appearance', 'score', 'arrangement-appearance'].includes(this.selectedCategory()));
+    });
+    effect(onCleanup => {
+      const backdrop = this.dialog.overlayRef.backdropElement;
+      backdrop?.classList.toggle('appearance-preview', this.preview());
+      onCleanup(() => backdrop?.classList.remove('appearance-preview'));
+    });
+  }
+}

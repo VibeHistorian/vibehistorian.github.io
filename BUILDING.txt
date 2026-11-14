@@ -1,0 +1,28 @@
+VibeComposerJS - Angular frontend and Wails v2 desktop host
+
+Prerequisites
+  Node.js matching frontend/package.json engines; the exact pnpm version
+  pinned there; Go matching go.mod; Wails CLI matching its go.mod dependency.
+  Wails also needs the platform's native build tools and webview dependencies.
+  Platform setup: https://wails.io/docs/gettingstarted/installation
+
+Frontend (from frontend/)
+  pnpm install --frozen-lockfile
+  pnpm start                 browser development server
+  pnpm run build             production output in dist/browser
+
+Desktop (from repository root, after installing frontend dependencies)
+  wails dev
+  wails build -f             production app in build/bin
+
+Always run the frozen install after pulling dependency/patch changes.
+The pnpm workspace applies required library patches; see frontend/patches/.
+Do not substitute npm or Yarn. Fonts are bundled through pinned packages;
+their license notices are under frontend/public/licenses/.
+
+The Wails bindings in frontend/wailsjs are included for standalone Angular
+builds; Wails regenerates them when Go bindings change. Commit updated bindings.
+No soundfont downloads are needed for the default synthesized instruments.
+Optional SF2 banks are supplied by the user and are not included here.
+
+This repository contains release snapshots.

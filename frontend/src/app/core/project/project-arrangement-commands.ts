@@ -1,0 +1,195 @@
+import { initialVariationDraft, rerollVariationDraft } from './arrangement-variation-draft';
+import type { ArrangedPart } from '../music/part-role';
+import { type ArrangementSection, type SectionType, SECTION_TYPES } from './arrangement.model';
+import type { CompositionProject } from './project.model';
+import type { SectionTypeChanceSettings } from './section-type-chances';
+import { MAX_ARRANGEMENT_SECTIONS } from './project-arrangement-decoder';
+import { generateContextualPresence } from '../music/arrangement-intent';
+import { copyPartSettings } from '../music/part-settings';
+import { getDiatonicChords } from '../music/harmony';
+import { generateArrangementPlan } from '../music/arrangement-plan';
+import { JavaRandom } from '../music/java-random';
+import { DEFAULT_VARIATION_POLICY, planSectionVariations, validVariationPolicy } from '../music/arrangement-variations';
+import type { VariationPolicy, VariationGenerationOptions } from '../music/arrangement-variation.model';
+
+/** Explicit opt-in engine command; previews build candidates without publishing them. */
+export function randomizeArrangementVariations(project: CompositionProject, seed: bigint, sectionId?: string,
+  policy?: VariationPolicy, generation?: VariationGenerationOptions): CompositionProject | undefined {
+  if (policy !== undefined && !validVariationPolicy(policy, project.tracks.length)
+    || sectionId !== undefined && !project.arrangement.some(s => s.id === sectionId)) return undefined;
+  const scope = { sectionId };
+  const draft = rerollVariationDraft(project, scope, initialVariationDraft(project, scope), seed, policy, generation);
+  return { ...project, arrangement: project.arrangement.map(section => Object.hasOwn(draft, section.id)
+    ? { ...section, variations: draft[section.id] } : section) };
+}
+
+/** Replace structure and orchestration using independent deterministic streams. */
+export function randomizeArrangement(project: CompositionProject, chances: SectionTypeChanceSettings, seed: bigint = BigInt(project.seed), generateVariations = false, generation?: VariationGenerationOptions): CompositionProject {
+  const random = new JavaRandom(BigInt.asIntN(64, seed ^ 0x415252414e4745n));
+  const plan = generateArrangementPlan(seed);
+  const presence = generateContextualPresence(project.tracks, plan, chances, () => random.nextDouble());
+  const arrangement = plan.map(({ type }, index) => {
+    // Keep timing when manually replacing structure. New slots inherit the first
+    // section's value, including the shared choice written by Compose.
+    const beatDurationMultiplier = (project.arrangement[index] ?? project.arrangement[0])?.context?.beatDurationMultiplier;
+    return { id: `section-${index + 1}`, type, measures: 4, trackPresence: presence[index],
+      ...(beatDurationMultiplier !== undefined ? { context: { beatDurationMultiplier } } : {}) };
+  });
+  const next = { ...project, arrangement };
+  return generateVariations
+    ? randomizeArrangementVariations(next, seed, undefined, project.arrangementVariationPolicy ?? DEFAULT_VARIATION_POLICY, generation)! : next;
+}
+
+/** Compose-only shared timing choice; independent of structure/presence draws. */
+export function randomizeArrangementBeatDuration(project: CompositionProject, seed: bigint): CompositionProject {
+  const roll = new JavaRandom(BigInt.asIntN(64, seed ^ 0x4245415444555241n)).nextDouble();
+  const beatDurationMultiplier = roll < 0.85 ? 1 : roll < 0.95 ? 0.5 : 2;
+  return { ...project, arrangement: project.arrangement.map(section => ({ ...section,
+    context: { ...section.context, beatDurationMultiplier } })) };
+}
+
+// Build immutable candidates. ProjectService validates and commits each command once.
+export function addSection(project: CompositionProject, type: SectionType, afterIndex: number, chances: SectionTypeChanceSettings, random: () => number, generateVariations = false, generation?: VariationGenerationOptions): CompositionProject | undefined {
+  const sections = project.arrangement;
+  if (sections.length >= MAX_ARRANGEMENT_SECTIONS || !SECTION_TYPES.includes(type)) {
+    return;
+  }
+  const insertAt = Math.max(0, Math.min(sections.length, afterIndex + 1));
+  const nextId = sections.reduce((maximum, section) => {
+    const match = /^section-(\d+)$/.exec(section.id);
+    return match ? Math.max(maximum, Number(match[1])) : maximum;
+  }, 0) + 1;
+  const next = [...sections];
+  next.splice(insertAt, 0, {
+    id: `section-${nextId}`,
+    type,
+    measures: 4,
+    trackPresence: {},
+  });
+  const presence = generateContextualPresence(project.tracks, next, chances, random, insertAt);
+  next[insertAt] = { ...next[insertAt], trackPresence: presence[insertAt] };
+  if (generateVariations) next[insertAt] = { ...next[insertAt],
+    variations: planSectionVariations(project.tracks, next, insertAt, BigInt(project.seed), project.arrangementVariationPolicy ?? DEFAULT_VARIATION_POLICY, { melodyGlobal: project.melodyGlobal, generation }) };
+  return { ...project, arrangement: next };
+}
+
+export function duplicateSection(project: CompositionProject, index: number): CompositionProject | undefined {
+  const sections = project.arrangement;
+  if (!Number.isInteger(index) || index < 0 || index >= sections.length
+      || sections.length >= MAX_ARRANGEMENT_SECTIONS) {
+    return;
+  }
+  const nextId = sections.reduce((maximum, section) => {
+    const match = /^section-(\d+)$/.exec(section.id);
+    return match ? Math.max(maximum, Number(match[1])) : maximum;
+  }, 0) + 1;
+  const next = [...sections];
+  next.splice(index + 1, 0, {
+    ...sections[index], id: `section-${nextId}`,
+    ...(sections[index].variations ? { variations: structuredClone(sections[index].variations) } : {}),
+    context: sections[index].context ? { ...sections[index].context } : undefined,
+    customChords: sections[index].customChords?.map(chord => chord ? { ...chord } : null),
+    customDurations: sections[index].customDurations ? [...sections[index].customDurations] : undefined,
+    chordDegrees: sections[index].chordDegrees ? [...sections[index].chordDegrees] : undefined,
+    trackPresence: { ...sections[index].trackPresence },
+    ...(sections[index].generatedTrackIds ? { generatedTrackIds: [...sections[index].generatedTrackIds] } : {}),
+    ...(sections[index].trackPhrases !== undefined ? { trackPhrases: Object.fromEntries(Object.entries(sections[index].trackPhrases).map(([id, notes]) => [id, notes.map(note => ({ ...note }))])) } : {}),
+    rolePartOverrides: Object.fromEntries(Object.entries(sections[index].rolePartOverrides ?? {}).map(([role, patch]) => [role, copyPartSettings(patch)])),
+    trackPartOverrides: Object.fromEntries(Object.entries(sections[index].trackPartOverrides ?? {}).map(([id, patch]) => [id, copyPartSettings(patch)])),
+  });
+  return { ...project, arrangement: next };
+}
+
+export function removeSection(project: CompositionProject, index: number): CompositionProject | undefined {
+  const sections = project.arrangement;
+  if (!Number.isInteger(index) || index < 0 || index >= sections.length || sections.length <= 1) {
+    return;
+  }
+  return { ...project, arrangement: sections.filter((_, sectionIndex) => sectionIndex !== index) };
+}
+
+export function moveSection(project: CompositionProject, index: number, offset: -1 | 1): CompositionProject | undefined {
+  const sections = project.arrangement;
+  const target = index + offset;
+  if (!Number.isInteger(index) || index < 0 || target < 0 || target >= sections.length) {
+    return;
+  }
+  const next = [...sections];
+  [next[index], next[target]] = [next[target], next[index]];
+  return { ...project, arrangement: next };
+}
+
+export function updateSection(project: CompositionProject, index: number, patch: Partial<Pick<ArrangementSection, 'type' | 'measures'>>): CompositionProject | undefined {
+  const sections = project.arrangement;
+  if (!Number.isInteger(index) || index < 0 || index >= sections.length) {
+    return;
+  }
+  const next = [...sections];
+  const current = sections[index];
+  const updated = { ...current, ...patch };
+  if (patch.measures !== undefined && !current.customChords && !current.customDurations) {
+    const progression = project.progression;
+    const chordDegrees = Array.from({ length: patch.measures }, (_, measure) =>
+      current.chordDegrees?.[measure] ?? progression[measure % progression.length]);
+    updated.chordDegrees = matchesMainProgression(project, chordDegrees) ? undefined : chordDegrees;
+  }
+  next[index] = updated;
+  return { ...project, arrangement: next };
+}
+
+export function setSectionChordDegree(project: CompositionProject, sectionIndex: number, measureIndex: number, degree: number): CompositionProject | undefined {
+  const section = project.arrangement[sectionIndex];
+  if (!section || !Number.isInteger(measureIndex) || measureIndex < 0 || measureIndex >= section.measures
+      || !getDiatonicChords(project.key, project.scale).some((chord) => chord.degree === degree)) {
+    return;
+  }
+  const chordDegrees = Array.from({ length: section.measures }, (_, measure) =>
+    section.chordDegrees?.[measure] ?? project.progression[measure % project.progression.length]);
+  chordDegrees[measureIndex] = degree;
+  const next = [...project.arrangement];
+  next[sectionIndex] = { ...section, chordDegrees: matchesMainProgression(project, chordDegrees) ? undefined : chordDegrees };
+  return { ...project, arrangement: next };
+}
+
+export function clearSectionChordOverrides(project: CompositionProject, sectionIndex: number): CompositionProject | undefined {
+  const section = project.arrangement[sectionIndex];
+  if (!section || !section.chordDegrees && !section.customChords) return;
+  const next = [...project.arrangement];
+  next[sectionIndex] = { ...section, chordDegrees: undefined, customChords: undefined };
+  return { ...project, arrangement: next };
+}
+
+export function toggleSectionRolePresence(project: CompositionProject, sectionId: string, role: ArrangedPart): CompositionProject | undefined {
+  const section = project.arrangement.find(candidate => candidate.id === sectionId);
+  const tracks = project.tracks.filter(track => track.role === role);
+  if (!section || !tracks.length) return;
+  const present = !tracks.some(track => section.trackPresence[track.id] ?? false);
+  const trackPresence = { ...section.trackPresence,
+    ...Object.fromEntries(tracks.map(track => [track.id, present])) };
+  return { ...project, arrangement: project.arrangement.map(candidate => candidate.id === sectionId
+    ? { ...section, trackPresence } : candidate) };
+}
+
+export function setSectionTrackPresence(project: CompositionProject, index: number, trackId: string, present: boolean): CompositionProject | undefined {
+  const section = project.arrangement[index];
+  if (!section || typeof present !== 'boolean' || !project.tracks.some((candidate) => candidate.id === trackId)) return;
+  const trackPresence = { ...section.trackPresence, [trackId]: present };
+  return { ...project, arrangement: project.arrangement.map((candidate, candidateIndex) => candidateIndex === index
+    ? { ...section, trackPresence } : candidate) };
+}
+
+export function randomizeArrangementPresence(project: CompositionProject, sectionId: string | undefined, chances: SectionTypeChanceSettings, random: () => number): CompositionProject | undefined {
+  if (sectionId !== undefined && !project.arrangement.some(section => section.id === sectionId)) return;
+  const targetIndex = sectionId === undefined ? undefined : project.arrangement.findIndex(section => section.id === sectionId);
+  const presence = generateContextualPresence(project.tracks, project.arrangement, chances, random, targetIndex);
+  const arrangement = project.arrangement.map((section, index) => sectionId === undefined || section.id === sectionId
+    ? { ...section, trackPresence: presence[index] }
+    : section);
+  return { ...project, arrangement };
+}
+
+function matchesMainProgression(project: CompositionProject, chordDegrees: readonly number[]): boolean {
+  if (project.progressionChords?.some(Boolean)) return false;
+  const progression = project.progression;
+  return chordDegrees.every((degree, index) => degree === progression[index % progression.length]);
+}

@@ -1,0 +1,21 @@
+<span class="select-value">{{ displayLabel() ?? selectedLabel() }}</span>
+<ng-template cdkConnectedOverlay [cdkConnectedOverlayOrigin]="element.nativeElement"
+  [cdkConnectedOverlayOpen]="combobox.expanded()" [cdkConnectedOverlayPositions]="positions()"
+  [cdkConnectedOverlayMinWidth]="panelMinWidth()" [cdkConnectedOverlayViewportMargin]="8"
+  [cdkConnectedOverlayPush]="true" (overlayOutsideClick)="outsideClick($event)" (detach)="close()">
+  <ng-template ngComboboxPopup [combobox]="combobox">
+    <div class="select-panel" ngComboboxWidget ngListbox #listbox="ngListbox"
+      [style.--select-available-height.px]="panelMaxHeight()"
+      focusMode="activedescendant" selectionMode="explicit" [tabindex]="-1" [wrap]="true"
+      [value]="draft()" [activeDescendant]="listbox.activeDescendant()"
+      [attr.aria-label]="element.nativeElement.getAttribute('aria-label') || 'Choices'"
+      (pointerdown)="$event.preventDefault()" (click)="commit($event)"
+      (keydown.enter)="commit($event)" (keydown.space)="commit($event)">
+      @if (mixed()) { <div ngOption value="" label="Mixed" [disabled]="true">Mixed</div> }
+      @for (option of choices(); track option.value) {
+        <div ngOption [value]="option.value" [label]="option.label" [disabled]="option.disabled ?? false"
+          [attr.data-value]="option.value">{{ option.label }}</div>
+      }
+    </div>
+  </ng-template>
+</ng-template>

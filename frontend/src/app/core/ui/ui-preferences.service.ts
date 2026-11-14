@@ -1,0 +1,306 @@
+import { DEFAULT_MIDI_PPQ, validMidiPpq } from '../music/midi-resolution';
+import { decodeVariationRerolls, type VariationRerollPreferences } from './variation-reroll-preferences';
+import type { VariationKind } from '../music/arrangement-variation.model';
+import { fixedMouseButton, defaultShortcuts, shortcutFromEvent, sameShortcut, type Shortcut, type ShortcutId } from './shortcuts';
+import { computed, Injectable, signal } from '@angular/core';
+import { EXPORT_NAME_FIELDS, type ExportNameField } from '../project/export-filename';
+import { type ArrangedPart, ARRANGED_PARTS } from '../music/part-role';
+import { decodeAppearance, adjustColor, COLOR_ADJUSTMENTS, defaultAppearance, FONT_CHOICES, isRoleColor, roleColorTokens, PANEL_LAYOUT_OPTIONS, type PanelLayout, WINDOW_WIDTH_OPTIONS, type WindowWidthLimit, type ColorAdjustment, type FontArea } from './appearance';
+import { PART_CONTROLS } from '../music/part-settings';
+import type { DrumMappingPreference } from '../music/drum-instruments';
+import { THEME_COLORS, themeColorTokens, type ThemeColor } from './theme';
+import { randomAppearance, type AppearanceMode } from './random-appearance';
+import { SCORE_NOTE_SHAPES, type ScoreNoteShape, combinedControlKeys, decodeUiPreferences, defaultQuickSettings, defaultUiPreferences, type QuickSettings, type UiPreferences } from './ui-preferences';
+
+const STORAGE_KEY = 'vibecomposer.ui-preferences.v1';
+
+@Injectable({ providedIn: 'root' })
+export class UiPreferencesService {
+  private readonly state = signal(this.load());
+  private readonly draft = signal<QuickSettings | null>(null);
+  readonly preferences = this.state.asReadonly();
+  readonly midiPpq = computed(() => this.state().midiPpq ?? DEFAULT_MIDI_PPQ);
+  setMidiPpq(value: number): void {
+    if (validMidiPpq(value)) this.commit({ ...this.state(), midiPpq: value });
+  }
+  readonly shortcuts = computed(() => this.state().shortcuts);
+  readonly capturingShortcut = signal(false);
+  matchesShortcut(id: ShortcutId, event: KeyboardEvent | MouseEvent | WheelEvent): boolean {
+    if (this.capturingShortcut()) return false;
+    const binding = shortcutFromEvent(event);
+    return !!binding && this.shortcuts()[id].some(value => sameShortcut(value, binding));
+  }
+  matchesGestureHint(id: ShortcutId, event: MouseEvent): boolean {
+    return this.shortcuts()[id].some(binding => binding.kind === 'mouse' && this.matchesGesture(id, {
+      button: Number(binding.input), ctrlKey: event.ctrlKey, metaKey: event.metaKey,
+      shiftKey: event.shiftKey, altKey: event.altKey,
+    } as MouseEvent));
+  }
+  matchesGesture(id: ShortcutId, event: MouseEvent): boolean {
+    if (this.matchesShortcut(id, event)) return true;
+    const modifiers = this.shortcuts().freeGrid;
+    return modifiers.some(modifier => this.matchesShortcut(id, {
+      button: event.button, ctrlKey: modifier.ctrl ? false : event.ctrlKey, metaKey: modifier.ctrl ? false : event.metaKey,
+      shiftKey: modifier.shift ? false : event.shiftKey, altKey: modifier.alt ? false : event.altKey,
+    } as MouseEvent));
+  }
+  matchesModifiers(id: ShortcutId, event: { ctrlKey?: boolean; metaKey?: boolean; shiftKey?: boolean; altKey?: boolean }): boolean {
+    return !this.capturingShortcut() && this.shortcuts()[id].some(binding => binding.kind === 'modifier'
+      && (!binding.ctrl || event.ctrlKey || event.metaKey) && (!binding.shift || event.shiftKey) && (!binding.alt || event.altKey));
+  }
+  setShortcut(id: ShortcutId, binding: Shortcut | null): void {
+    const button = fixedMouseButton(id);
+    const normalized = binding && button !== undefined ? { ...binding, kind: 'mouse' as const, input: String(button) } : binding;
+    this.commit({ ...this.state(), shortcuts: { ...this.shortcuts(), [id]: normalized ? [normalized] : [] } });
+  }
+  resetShortcuts(): void { this.commit({ ...this.state(), shortcuts: defaultShortcuts() }); }
+  readonly compactHistory = computed(() => this.state().compactHistory);
+  readonly syncScoreMix = computed(() => this.state().syncScoreMix);
+  readonly scoreChordGrid = computed(() => this.state().scoreChordGrid);
+  readonly scoreOutlineOtherTracks = computed(() => this.state().scoreOutlineOtherTracks);
+  readonly scoreNoteShape = computed(() => this.state().scoreNoteShape);
+  setScoreNoteShape(value: string): void {
+    if (SCORE_NOTE_SHAPES.some(choice => choice.value === value)) this.commit({ ...this.state(), scoreNoteShape: value as ScoreNoteShape });
+  }
+  readonly scoreGhostNotes = computed(() => this.state().scoreGhostNotes);
+  readonly restartPlaybackOnCompose = computed(() => this.state().restartPlaybackOnCompose);
+  readonly replaceCurrentProjectTab = computed(() => this.state().replaceCurrentProjectTab);
+  setReplaceCurrentProjectTab(enabled: boolean): void {
+    if (typeof enabled === 'boolean') this.commit({ ...this.state(), replaceCurrentProjectTab: enabled });
+  }
+  readonly replacePresetTracks = computed(() => this.state().replacePresetTracks);
+  setReplacePresetTracks(enabled: boolean): void {
+    if (typeof enabled === 'boolean') this.commit({ ...this.state(), replacePresetTracks: enabled });
+  }
+  readonly generateArrangementVariations = computed(() => this.state().generateArrangementVariations);
+  readonly rerollPresenceWithVariations = computed(() => this.state().rerollPresenceWithVariations);
+  setArrangementBehavior(key: 'generateArrangementVariations' | 'rerollPresenceWithVariations', enabled: boolean): void {
+    if (!['generateArrangementVariations', 'rerollPresenceWithVariations'].includes(key) || typeof enabled !== 'boolean') return;
+    this.commit({ ...this.state(), [key]: enabled });
+  }
+  readonly variationRerolls = computed(() => this.state().variationRerolls);
+  setVariationRerollEnabled(kind: VariationKind, enabled: boolean): void {
+    if (typeof enabled !== 'boolean') return;
+    const current = this.variationRerolls();
+    const allowedKinds = enabled ? [...new Set([...current.allowedKinds, kind])] : current.allowedKinds.filter(k => k !== kind);
+    this.setVariationRerolls({ ...current, allowedKinds });
+  }
+  setVariationSpeedDelta(melodySpeedDelta: number): void { this.setVariationRerolls({ ...this.variationRerolls(), melodySpeedDelta }); }
+  setVariationStrength(kind: VariationKind, value: number, falling = false): void {
+    if (kind === 'melody-speed') { this.setVariationSpeedDelta(value); return; }
+    const current = this.variationRerolls();
+    this.setVariationRerolls(kind === 'accompaniment-velocity-ramp' && falling
+      ? { ...current, velocityFallDelta: value }
+      : { ...current, strengths: { ...current.strengths, [kind]: value } });
+  }
+  private setVariationRerolls(value: VariationRerollPreferences): void {
+    const variationRerolls = decodeVariationRerolls(value);
+    if (variationRerolls) this.commit({ ...this.state(), variationRerolls });
+  }
+  readonly harmonyFollowsMode = computed(() => this.state().harmonyFollowsMode);
+  setHarmonyFollowsMode(value: string): void {
+    if (value !== 'off' && value !== 'global' && value !== 'all') return;
+    this.commit({ ...this.state(), harmonyFollowsMode: value });
+  }
+  readonly manualPhrasesFollowMode = computed(() => this.state().manualPhrasesFollowMode);
+  toggleManualPhrasesFollowMode(): void {
+    this.commit({ ...this.state(), manualPhrasesFollowMode: !this.manualPhrasesFollowMode() });
+  }
+  readonly limitInstrumentsToPool = computed(() => this.state().limitInstrumentsToPool);
+  readonly drumMapping = computed(() => this.state().drumMapping);
+  readonly discardPhraseNotesOnMidiDrop = computed(() => this.state().discardPhraseNotesOnMidiDrop);
+  toggleDiscardPhraseNotesOnMidiDrop(): void {
+    this.commit({ ...this.state(), discardPhraseNotesOnMidiDrop: !this.discardPhraseNotesOnMidiDrop() });
+  }
+  readonly exportNameFields = computed(() => this.state().exportNameFields);
+  toggleExportNameField(field: ExportNameField): void {
+    const current = this.exportNameFields();
+    const exportNameFields = EXPORT_NAME_FIELDS.filter(choice => choice.id === field ? !current.includes(field) : current.includes(choice.id)).map(choice => choice.id);
+    this.commit({ ...this.state(), exportNameFields });
+  }
+  setDrumMapping(drumMapping: DrumMappingPreference): void {
+    if (!['auto', 'general-midi', 'chromatic'].includes(drumMapping)) return;
+    this.commit({ ...this.state(), drumMapping });
+  }
+  readonly appearance = computed(() => this.state().appearance);
+  readonly editingQuickSettings = computed(() => this.draft() !== null);
+  readonly quickSettings = computed(() => this.draft() ?? this.state().quickSettings);
+
+  constructor() { this.applyAppearance(this.state()); }
+
+  setPanelLayout(value: string): void {
+    if (!PANEL_LAYOUT_OPTIONS.some(option => option.value === value)) return;
+    this.commit({ ...this.state(), appearance: { ...this.appearance(), panelLayout: value as PanelLayout } });
+  }
+
+  setWindowWidthLimit(value: string): void {
+    if (!WINDOW_WIDTH_OPTIONS.some(option => option.value === value)) return;
+    this.commit({ ...this.state(), appearance: { ...this.appearance(), windowWidthLimit: value as WindowWidthLimit } });
+  }
+
+  setFont(area: FontArea, font: string): void {
+    if (!FONT_CHOICES.some(choice => choice.value === font)) return;
+    const appearance = this.appearance();
+    this.commit({ ...this.state(), appearance: { ...appearance, fonts: { ...appearance.fonts, [area]: font } } });
+  }
+  setRoleColor(role: ArrangedPart, color: string): void {
+    if (!isRoleColor(color)) return;
+    const appearance = this.appearance();
+    this.commit({ ...this.state(), appearance: { ...appearance, roleColors: { ...appearance.roleColors, [role]: color.toLowerCase() } } });
+  }
+  resetAppearance(): void { this.commit({ ...this.state(), appearance: defaultAppearance() }); }
+
+  randomizeAppearance(mode: AppearanceMode): void {
+    const entropy = globalThis.crypto.getRandomValues(new Uint32Array(2));
+    const seed = (BigInt(entropy[0]) << 32n) | BigInt(entropy[1]);
+    this.commit({ ...this.state(), appearance: randomAppearance(this.appearance(), seed, mode) });
+  }
+
+  toggleResetAdjustments(): void {
+    const appearance = this.appearance();
+    this.commit({ ...this.state(), appearance: { ...appearance, resetAdjustments: !appearance.resetAdjustments } });
+  }
+
+  toggleProgressiveTrackColoring(): void {
+    const appearance = this.appearance();
+    this.commit({ ...this.state(), appearance: { ...appearance, progressiveTrackColoring: !appearance.progressiveTrackColoring } });
+  }
+
+  toggleHueShiftRoles(): void {
+    const appearance = this.appearance();
+    this.commit({ ...this.state(), appearance: { ...appearance, hueShiftRoles: !appearance.hueShiftRoles } });
+  }
+
+  applyAdjustmentsToBaseColors(): void {
+    const appearance = this.appearance();
+    const roleAdjustments = { ...appearance.colorAdjustments,
+      hueShift: appearance.hueShiftRoles ? appearance.colorAdjustments.hueShift : 0 };
+    this.commit({ ...this.state(), appearance: { ...appearance,
+      themeColors: Object.fromEntries(THEME_COLORS.map(({ key }) =>
+        [key, adjustColor(appearance.themeColors[key], appearance.colorAdjustments)])) as typeof appearance.themeColors,
+      roleColors: Object.fromEntries(ARRANGED_PARTS.map(role =>
+        [role, adjustColor(appearance.roleColors[role], roleAdjustments)])) as typeof appearance.roleColors,
+      colorAdjustments: { brightness: 0, hueShift: 0, saturation: 0 },
+    } });
+  }
+
+  setColorAdjustment(key: ColorAdjustment, value: number): void {
+    if (!COLOR_ADJUSTMENTS.some(choice => choice.key === key) || !Number.isFinite(value)) return;
+    const appearance = this.appearance();
+    this.commit({ ...this.state(), appearance: { ...appearance,
+      colorAdjustments: { ...appearance.colorAdjustments, [key]: Math.max(-50, Math.min(50, value)) } } });
+  }
+
+  setArrangementBrightness(key: 'arrangementCellBrightness' | 'arrangementNoteBrightness', value: number): void {
+    if (!['arrangementCellBrightness', 'arrangementNoteBrightness'].includes(key) || !Number.isFinite(value)) return;
+    this.commit({ ...this.state(), appearance: { ...this.appearance(), [key]: Math.max(-50, Math.min(50, value)) } });
+  }
+
+  setScoreBrightness(key: 'scoreRowBrightness' | 'scoreGridBrightness', value: number): void {
+    if (!['scoreRowBrightness', 'scoreGridBrightness'].includes(key) || !Number.isFinite(value)) return;
+    this.commit({ ...this.state(), appearance: { ...this.appearance(), [key]: Math.max(-50, Math.min(50, value)) } });
+  }
+
+  setThemeColor(key: ThemeColor, color: string): void {
+    if (!THEME_COLORS.some(choice => choice.key === key) || !isRoleColor(color)) return;
+    const appearance = this.appearance();
+    this.commit({ ...this.state(), appearance: { ...appearance, themeColors: { ...appearance.themeColors, [key]: color.toLowerCase() } } });
+  }
+
+  private applyAppearance(preferences: UiPreferences): void {
+    const style = globalThis.document?.documentElement?.style;
+    if (!style) return;
+    const compact = preferences.appearance.panelLayout === 'compact';
+    for (const [name, value] of Object.entries({
+      '--workspace-panel-radius': compact ? '0px' : 'var(--radius-panel)',
+      '--workspace-dock-radius': compact ? '0px' : 'var(--radius-panel-large)',
+      '--workspace-group-radius': compact ? '0px' : 'var(--radius-control)',
+      '--workspace-column-gap': compact ? '1px' : '16px',
+      '--workspace-row-gap': compact ? '1px' : '12px',
+      '--workspace-group-gap': compact ? '1px' : '9px',
+      '--workspace-side-inset': compact ? '0px' : '10px',
+      '--workspace-outer-space': compact ? '4px' : '48px',
+    })) style.setProperty(name, value);
+    const width = preferences.appearance.windowWidthLimit;
+    style.setProperty('--workspace-max-width', width === 'none' ? '100vw' : `${width}px`);
+    const adjust = (color: string) => adjustColor(color, preferences.appearance.colorAdjustments);
+    const colors = Object.fromEntries(THEME_COLORS.map(({ key }) => [key, adjust(preferences.appearance.themeColors[key])])) as typeof preferences.appearance.themeColors;
+    for (const [name, color] of Object.entries(themeColorTokens(colors, preferences.appearance.scoreRowBrightness, preferences.appearance.scoreGridBrightness))) style.setProperty(name, color);
+    for (const [area, font] of Object.entries(preferences.appearance.fonts)) style.setProperty(`--font-${area}`, font);
+    const roleAdjustments = { ...preferences.appearance.colorAdjustments,
+      hueShift: preferences.appearance.hueShiftRoles ? preferences.appearance.colorAdjustments.hueShift : 0 };
+    for (const role of ARRANGED_PARTS) {
+      const color = adjustColor(preferences.appearance.roleColors[role], roleAdjustments);
+      for (const [name, value] of Object.entries(roleColorTokens(role, color, colors))) style.setProperty(name, value);
+    }
+  }
+
+  beginQuickSettings(): void { this.draft.set({ ...this.state().quickSettings }); }
+  saveQuickSettings(): void {
+    const quickSettings = this.draft();
+    if (quickSettings) this.commit({ ...this.state(), quickSettings });
+    this.draft.set(null);
+  }
+  resetQuickSettings(role: ArrangedPart): void {
+    if (this.draft()) this.draft.update(draft => ({ ...draft!, [role]: defaultQuickSettings()[role] }));
+  }
+  moveControl(role: ArrangedPart, key: string): void {
+    const draft = this.draft();
+    if (!draft || !PART_CONTROLS[role].some(control => control.key === key)) return;
+    const keys = new Set(draft[role]);
+    const pairedKeys = combinedControlKeys(key, role);
+    const remove = pairedKeys.some(key => keys.has(key));
+    for (const pairedKey of pairedKeys) {
+      if (remove) keys.delete(pairedKey); else keys.add(pairedKey);
+    }
+    this.draft.set({ ...draft, [role]: PART_CONTROLS[role].filter(control => keys.has(control.key)).map(control => control.key) });
+  }
+  toggleCompactHistory(): void { this.commit({ ...this.state(), compactHistory: !this.compactHistory() }); }
+  toggleScoreMixSync(): void { this.commit({ ...this.state(), syncScoreMix: !this.syncScoreMix() }); }
+  toggleScoreChordGrid(): void { this.commit({ ...this.state(), scoreChordGrid: !this.scoreChordGrid() }); }
+  toggleScoreOutlineOtherTracks(): void { this.commit({ ...this.state(), scoreOutlineOtherTracks: !this.scoreOutlineOtherTracks() }); }
+
+  toggleScoreGhostNotes(): void { this.commit({ ...this.state(), scoreGhostNotes: !this.scoreGhostNotes() }); }
+  toggleRestartPlaybackOnCompose(): void { this.commit({ ...this.state(), restartPlaybackOnCompose: !this.restartPlaybackOnCompose() }); }
+  toggleLimitInstrumentsToPool(): void { this.commit({ ...this.state(), limitInstrumentsToPool: !this.limitInstrumentsToPool() }); }
+  setComposeBpmBound(key: 'composeBpmMin' | 'composeBpmMax', value: number): void {
+    const candidate = decodeUiPreferences({ ...this.state(), [key]: value });
+    if (candidate) this.commit(candidate);
+  }
+  toggleSettingsExplainers(): void {
+    this.commit({ ...this.state(), settingsExplainersAsTooltips: !this.state().settingsExplainersAsTooltips });
+  }
+  importThemeJson(json: string): boolean {
+    try {
+      const data = JSON.parse(json);
+      if (data?.kind !== 'vibecomposer-ui-preferences') return false;
+      const appearance = decodeAppearance(data.appearance);
+      if (!appearance) return false;
+      this.commit({ ...this.state(), appearance });
+      return true;
+    } catch { return false; }
+  }
+  exportJson(): string { return JSON.stringify(this.state(), null, 2); }
+  importJson(json: string): boolean {
+    try {
+      const preferences = decodeUiPreferences(JSON.parse(json));
+      if (!preferences) return false;
+      this.commit(preferences);
+      this.draft.set(null);
+      return true;
+    } catch { return false; }
+  }
+  private load(): UiPreferences {
+    try {
+      const raw = globalThis.localStorage?.getItem(STORAGE_KEY);
+      if (raw) return decodeUiPreferences(JSON.parse(raw)) ?? defaultUiPreferences();
+    } catch { /* Storage may be unavailable. */ }
+    return defaultUiPreferences();
+  }
+  private commit(preferences: UiPreferences): void {
+    this.applyAppearance(preferences);
+    this.state.set(preferences);
+    try { globalThis.localStorage?.setItem(STORAGE_KEY, JSON.stringify(preferences)); }
+    catch { /* Keep preferences usable in memory when storage is unavailable. */ }
+  }
+}

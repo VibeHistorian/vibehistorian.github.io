@@ -1,0 +1,51 @@
+/* Dialog layout */
+:host { display: block; width: min(720px, 94vw); }
+.variations-dialog { max-height: 88vh; overflow: auto; padding: 20px; border: 1px solid var(--border-strong); border-radius: var(--radius-panel-large); background: var(--surface-base); color: var(--text-primary); }
+header, footer { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; }
+h1 { margin: 0; font-size: 20px; }
+p { color: var(--text-muted); font-size: 12px; line-height: 1.5; }
+footer { justify-content: flex-end; margin-top: 16px; }
+button, input { border: 1px solid var(--border-strong); border-radius: var(--radius-control); background: var(--surface-button); color: var(--text-primary); font: 12px var(--font-ui); }
+button { cursor: pointer; padding: 7px 10px; }
+button:hover:not(:disabled) { background: var(--surface-button-hover); }
+button:active:not(:disabled) { border-color: var(--border-accent); background: var(--surface-accent); }
+button:disabled { opacity: .5; cursor: default; }
+button:focus-visible, input:focus-visible { outline: 2px solid var(--border-focus); outline-offset: 2px; }
+
+/* Policy controls */
+fieldset { display: flex; flex-wrap: wrap; align-items: end; gap: 12px; border: 1px solid var(--border-subtle); border-radius: var(--radius-control); }
+legend, label { font-size: 12px; }
+fieldset label { display: grid; gap: 5px; }
+input[type="number"] { width: 90px; padding: 6px; }
+.policy-hint { margin-bottom: 16px; }
+
+/* Variation effects */
+.variation-section { margin-top: 14px; }
+.variation-section-heading { display: flex; align-items: center; gap: 10px; margin-bottom: 8px; font-size: 12px; }
+h2 { flex: none; margin: 0; font-size: 13px; color: var(--text-primary); }
+.section-intent, .variation-purpose { color: var(--text-muted); }
+.section-intent { flex: none; }
+.variation-purpose { min-width: 0; }
+.add-variation { display: grid; place-items: center; flex: none; margin-left: auto; width: 26px; height: 26px; padding: 0; border: 1px solid var(--border-strong); border-radius: var(--radius-control); background: var(--surface-button); color: var(--text-primary); font-size: 16px; line-height: 1; text-align: center; cursor: pointer; }
+.add-variation:hover:not(:disabled), .add-variation[aria-expanded="true"]:not(:disabled) { border-color: var(--accent-primary); background: var(--surface-button-hover); color: var(--text-primary); }
+.add-variation:disabled { opacity: .5; cursor: default; }
+article { padding: 10px; margin-bottom: 8px; background: var(--surface-low); border: 1px solid var(--border-subtle); border-radius: var(--radius-control); }
+.variation-line { display: flex; flex-wrap: wrap; align-items: flex-start; gap: 6px 16px; }
+.variation-label { display: flex; align-items: center; gap: 4px; font-size: 12px; line-height: 1.5; white-space: nowrap; }
+.variation-label strong { flex: 0 1 auto; max-width: 120px; overflow: hidden; text-overflow: ellipsis; }
+.variation-target { display: flex; align-items: center; gap: 6px; min-width: 0; max-width: 100%; }
+.variation-lock, .variation-delete { flex: none; width: 18px; height: 23px; padding: 0; border: 1px solid var(--border-default); border-radius: var(--radius-tight); background: var(--surface-button); color: var(--text-muted); font: 13px var(--font-ui); }
+.variation-lock[aria-pressed="true"] { border-color: var(--text-primary); color: var(--text-primary); }
+.variation-lock:hover:not(:disabled), .variation-delete:hover:not(:disabled) { border-color: var(--border-strong); background: var(--surface-button-hover); color: var(--text-primary); }
+.effect-values { display: grid; flex: 1 1 200px; min-width: 0; gap: 4px; text-align: right; }
+.effect-value { color: var(--text-secondary); font-size: 12px; line-height: 1.5; overflow-wrap: anywhere; }
+.context-mismatch .effect-value { color: var(--accent-primary); }
+.effect-status, .context-warning { display: block; margin: 6px 0 0 24px; font-size: 12px; overflow-wrap: anywhere; }
+.context-warning, [role="alert"] { color: var(--accent-primary); }
+.presence-changes { margin-bottom: 10px; font-size: 12px; color: var(--text-secondary); }
+
+/* Choice authoring */
+.variation-label { min-width: 0; }
+.variation-replace { display: inline-flex; min-width: 0; max-width: 100%; font: inherit; cursor: pointer; border-bottom: 1px dotted var(--border-strong); }
+.variation-strength { display: flex; align-items: center; justify-content: flex-end; gap: 6px; margin-top: 6px; color: var(--text-muted); }
+.variation-strength input { width: 60px; padding: 3px 5px; }

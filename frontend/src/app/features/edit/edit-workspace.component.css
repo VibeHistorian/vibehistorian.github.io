@@ -1,0 +1,26 @@
+/* Contextual editor host */
+:host { display: none; }
+/* Note inspector */
+.inspector-heading { display: flex; justify-content: space-between; align-items: center; gap: 8px; }
+.eyebrow { margin: 0; color: var(--text-muted); font: 10px var(--font-mono); letter-spacing: .1em; text-align: right; }
+h2 { min-width: 0; flex: 1; display: flex; align-items: center; gap: 7px; margin: 0; color: var(--text-primary); font: 600 14px var(--font-ui); }
+.edit-mark { flex: 0 0 auto; color: var(--accent-primary); }
+.selected-note-name { margin-top: 22px; color: var(--text-primary); font: 14px var(--font-mono); }
+.selected-note-name span { display: block; margin-top: 5px; color: var(--text-muted); font: 9px var(--font-mono); }
+.field-label { display: block; margin: 14px 0 6px; color: var(--text-secondary); font: 11px var(--font-ui); }
+.field-with-value, .velocity-control { display: flex; align-items: center; gap: 9px; }
+input[type=number] { box-sizing: border-box; width: 100%; padding: 7px; border: 1px solid var(--border-default); border-radius: var(--radius-control); background: var(--surface-input); color: var(--text-primary); font: 11px var(--font-mono); }
+output { color: var(--text-secondary); font: 11px var(--font-mono); white-space: nowrap; }
+input[type=range] { min-width: 0; flex: 1; accent-color: var(--accent-primary); }
+input:focus-visible, button:focus-visible { outline: 2px solid var(--border-focus); outline-offset: 1px; }
+button { padding: 6px 9px; border: 1px solid var(--border-default); border-radius: var(--radius-control); background: var(--surface-button); color: var(--text-primary); font: 11px var(--font-ui); cursor: pointer; }
+.remove-note { margin-top: 16px; }
+.inspector-copy, .restore-panel, .source-panel { margin-top: 20px; color: var(--text-muted); font: 11px/1.6 var(--font-ui); }
+.restore-panel { padding-top: 12px; border-top: 1px solid var(--border-subtle); }
+/* Phrase tools and help */
+.phrase-tools { margin-top: 16px; border-top: 1px solid var(--border-subtle); }
+.phrase-tools vc-select { width: 100%; padding: 7px; font: 11px var(--font-mono); }
+.phrase-actions { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 10px; }
+.phrase-help { margin-top: 20px; color: var(--text-secondary); font: 11px/1.6 var(--font-ui); }
+.phrase-help summary { cursor: pointer; color: var(--text-primary); }
+button:disabled { opacity: .5; cursor: default; }

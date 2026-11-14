@@ -1,0 +1,57 @@
+<section class="arrangement-panel" aria-labelledby="arrangement-title">
+  <header class="canvas-heading">
+    <h1 id="arrangement-title" class="brand" aria-label="VibeComposer">
+      <span class="brand-mark" aria-hidden="true">V</span>
+    </h1>
+    <ng-content select="[arrangementProjectTabs]" />
+    <div class="canvas-actions">
+      <button type="button" class="add-section-button" [disabled]="!canAddSection()"
+        [attr.aria-expanded]="!!sectionPicker()" aria-haspopup="menu" aria-label="Add arrangement section" title="Add section"
+        (click)="toggleSectionPicker($event)">＋</button>
+      @if (selectedSectionIds().length) {
+        <button type="button" class="reroll-button" (click)="selectionCleared.emit()" title="Clear section selection. Shortcuts: Settings > Shortcuts.">CLEAR</button>
+      }
+      <button type="button" class="reroll-button icon-button" (click)="$event.stopPropagation(); randomizeRequested.emit()"
+        aria-label="Reroll arrangement" title="Reroll the whole arrangement: section structure and track presence">↻</button>
+      <button type="button" class="reroll-button icon-button variations-button" (click)="$event.stopPropagation(); variationsRequested.emit()"
+        aria-label="Inspect whole arrangement variations" title="Review or reroll variations, keeping section order and presence">◇</button>
+      <button type="button" class="arrangement-toggle" [class.active]="!!project().randomizeArrangementOnCompose"
+        [attr.aria-pressed]="!!project().randomizeArrangementOnCompose" aria-label="Arrangement On Compose"
+        title="On Compose: reroll arrangement when global Compose runs"
+        (click)="arrangementOnComposeChanged.emit(!project().randomizeArrangementOnCompose)">✦</button>
+      <button type="button" class="arrangement-toggle" [class.active]="!!project().arrangementPreview"
+        [attr.aria-pressed]="!!project().arrangementPreview" aria-label="Arrangement Preview"
+        title="Preview: jump to the section with the most tracks after Reroll or Compose"
+        (click)="arrangementPreviewChanged.emit(!project().arrangementPreview)">👁</button>
+      <button type="button" class="arrangement-toggle manual-toggle" [class.active]="!!project().arrangementManual"
+        [attr.aria-pressed]="!!project().arrangementManual" aria-label="Arrangement Manual"
+        title="Manual: preserve sections and reroll only track presence when On Compose is enabled"
+        (click)="arrangementManualChanged.emit(!project().arrangementManual)">Manual</button>
+    </div>
+  </header>
+
+  <div class="overview-scroll" #scrollHost (scroll)="onScroll()">
+    <div class="overview-content" #scrollContent>
+      <div class="overview-viewport" #viewport>
+        <canvas #scoreCanvas tabindex="0" role="application"
+          aria-label="Arrangement overview. Select sections, edit presence and reroll settings. View and customize interactions in Settings > Shortcuts. Arrow keys navigate; Enter activates."
+          aria-keyshortcuts="ArrowLeft ArrowRight ArrowUp ArrowDown Enter"
+          (click)="onCanvasClick($event)" (pointermove)="onPointerMove($event)" (pointerleave)="onPointerLeave()"
+          (pointerup)="onCanvasPointerup($event)" (pointercancel)="cancelCopyDrag()" (lostpointercapture)="cancelCopyDrag()"
+          (pointerdown)="onCanvasPointerdown($event)" (auxclick)="onCanvasAuxclick($event)"
+          (contextmenu)="onCanvasContextmenu($event)"
+          (keydown)="onCanvasKeydown($event)"></canvas>
+        <canvas #playheadCanvas class="playhead-canvas" aria-hidden="true"></canvas>
+      </div>
+    </div>
+  </div>
+</section>
+@if (sectionPicker(); as popup) {
+  <div class="section-picker" role="menu" aria-label="Section choices" [style.left.px]="popup.x" [style.top.px]="popup.y"
+    (keydown)="sectionPickerKey($event)">
+    <span>Add section</span>
+    <div>@for (type of sectionTypes; track type) {
+      <button type="button" role="menuitem" (click)="chooseSection(type, $event)">{{ sectionLabel(type) }}</button>
+    }</div>
+  </div>
+}
